@@ -1,17 +1,24 @@
-<script setup lang="ts">
-import Todos from './components/Todos.vue';
+<script lang="ts">
+import { defineComponent } from 'vue';
+import { RouterView } from 'vue-router';
 
-import { Authenticator } from '@aws-amplify/ui-vue';
-import '@aws-amplify/ui-vue/styles.css';
+export default defineComponent({
+  name: 'App',
+  components: {
+    RouterView,
+  },
+});
 </script>
 
 <template>
-  <main>
-    <authenticator>
-      <template v-slot="{ signOut }">
-        <Todos />
-        <button @click="signOut">Sign Out</button>
-      </template>
-    </authenticator>
-  </main>
+  <RouterView />
 </template>
+
+<style>
+#app {
+  font-family: Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #2c3e50;
+}
+</style>

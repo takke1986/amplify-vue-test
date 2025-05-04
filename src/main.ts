@@ -1,9 +1,14 @@
-import "./assets/main.css";
-import { createApp } from "vue";
-import App from "./App.vue";
-import { Amplify } from "aws-amplify";
-import outputs from "../amplify_outputs.json";
+import './assets/main.css';
+import { createApp } from 'vue';
+import App from './App.vue';
+import { Amplify } from 'aws-amplify';
+import amplify_outputs from '../amplify_outputs.json';
+import router from './router';
 
-Amplify.configure(outputs);
+// Amplify設定
+Amplify.configure(amplify_outputs);
 
-createApp(App).mount("#app");
+// アプリケーションをマウント
+const app = createApp(App);
+app.use(router);
+app.mount('#app');
