@@ -11,11 +11,6 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
-  build: {
-    rollupOptions: {
-      external: ['vue-router'],
-    },
-  },
   server: {
     port: 3000,
   },
