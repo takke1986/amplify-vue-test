@@ -1,12 +1,10 @@
 <script lang="ts">
 import { defineComponent, onMounted, ref } from 'vue';
 import { fetchAuthSession } from 'aws-amplify/auth';
-import { useRouter } from 'vue-router';
 
 export default defineComponent({
   name: 'AuthGuard',
   setup() {
-    const router = useRouter();
     const isAuthenticated = ref(false);
     const isLoading = ref(true);
 

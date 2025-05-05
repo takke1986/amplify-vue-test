@@ -11,7 +11,6 @@ export default defineComponent({
           provider: { custom: 'MicrosoftEntraIDSAML' },
           options: {
             preferPrivateSession: false,
-            lang: 'ja',
           },
         });
       } catch (error) {
@@ -57,7 +56,6 @@ export default defineComponent({
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background-color: #f5f5f5;
 }
 
 .login-box {
