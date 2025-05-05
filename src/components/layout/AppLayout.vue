@@ -57,8 +57,9 @@ export default defineComponent({
 
         if (user && user.username) {
           // セッション情報から部署を取得
-          const busho =
-            session.tokens?.idToken?.payload?.['custom:busho'] || '未設定';
+          const busho = String(
+            session.tokens?.idToken?.payload?.['custom:busho'] || '未設定'
+          );
           console.log('取得した部署:', busho);
 
           currentUser.value = {
