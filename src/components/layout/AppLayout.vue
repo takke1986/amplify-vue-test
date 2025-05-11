@@ -1,7 +1,22 @@
 <script lang="ts">
-import { defineComponent, ref, onMounted } from 'vue';
+import { defineComponent, ref, onMounted, provide, computed } from 'vue';
 import { signOut, getCurrentUser, fetchAuthSession } from 'aws-amplify/auth';
 import { useRouter } from 'vue-router';
+import NotificationList from '@/components/notification/NotificationList.vue';
+
+type JsonObject = { [key: string]: any };
+type JsonArray = any[];
+
+function getBushoName(busho: unknown): string {
+  if (typeof busho !== 'string' && typeof busho !== 'number') return '不明';
+  const num = parseInt(String(busho), 10);
+  if (isNaN(num)) return '不明';
+  const group = Math.floor(num / 1000);
+  const ichi = num % 10;
+  if (ichi === 1) return `${group}部署（営業）`;
+  if (ichi === 2) return `${group}部署（配電）`;
+  return `${group}部署（その他）`;
+}
 
 export default defineComponent({
   name: 'AppLayout',
@@ -9,10 +24,13 @@ export default defineComponent({
     const isSigningOut = ref(false);
     const errorMessage = ref('');
     const currentUser = ref<{
-      username: string;
-      busho: string;
+      displayname: string;
+      busho: string | number | boolean | JsonObject | JsonArray;
     } | null>(null);
     const router = useRouter();
+    const bushoName = computed(() =>
+      currentUser.value ? getBushoName(currentUser.value.busho) : ''
+    );
 
     const handleSignOut = async () => {
       if (isSigningOut.value) return;
@@ -30,6 +48,13 @@ export default defineComponent({
       } finally {
         isSigningOut.value = false;
       }
+    };
+
+    const isAllowedBusho = (busho: string) => {
+      const num = parseInt(busho, 10);
+      if (isNaN(num)) return false;
+      const ichi = num % 10;
+      return ichi === 1 || ichi === 2;
     };
 
     const fetchCurrentUser = async () => {
@@ -55,25 +80,32 @@ export default defineComponent({
           session.tokens?.accessToken?.payload
         );
 
-        if (user && user.username) {
-          // セッション情報から部署を取得
-          const busho = String(
-            session.tokens?.idToken?.payload?.['custom:busho'] || '未設定'
-          );
-          console.log('取得した部署:', busho);
+        const busho =
+          session.tokens?.idToken?.payload?.['custom:busho'] ?? '未設定';
+        const displayname =
+          session.tokens?.idToken?.payload?.['name'] ||
+          session.tokens?.idToken?.payload?.['custom:displayname'] ||
+          user.username ||
+          '未設定';
+        console.log('取得した部署:', busho);
+        console.log('取得したdisplayname:', displayname);
 
-          currentUser.value = {
-            username: user.username,
-            busho: busho,
-          };
-          console.log('設定後のcurrentUser:', currentUser.value);
-        } else {
-          console.error('ユーザー情報が不完全です:', user);
-          errorMessage.value = 'ユーザー情報の取得に失敗しました。';
+        // 許可部署以外は即サインアウト
+        if (!isAllowedBusho(String(busho))) {
+          await signOut();
+          router.push('/login?error=not-allowed');
+          return;
         }
+
+        currentUser.value = {
+          displayname: String(displayname),
+          busho: busho as string | number | boolean | JsonObject | JsonArray,
+        };
+        console.log('設定後のcurrentUser:', currentUser.value);
       } catch (error) {
         console.error('ユーザー情報の取得に失敗しました:', error);
-        errorMessage.value = 'ユーザー情報の取得に失敗しました。';
+        errorMessage.value =
+          'ユーザー情報の取得に失敗しました。もう一度お試しください。';
       }
     };
 
@@ -82,50 +114,54 @@ export default defineComponent({
       fetchCurrentUser();
     });
 
+    // currentUserをprovideで子コンポーネントに渡す
+    provide('currentUser', currentUser);
+
     return {
       handleSignOut,
       isSigningOut,
       errorMessage,
       currentUser,
+      bushoName,
     };
   },
 });
 </script>
 
 <template>
-  <div class="app-container">
-    <header class="app-header">
-      <h1>回覧箋アプリ</h1>
-      <div class="header-right">
-        <div v-if="currentUser" class="user-info">
-          <span class="username">{{ currentUser.username }}</span>
-          <span class="employee-id">部署: {{ currentUser.busho }}</span>
+  <div class="app-layout">
+    <header class="header">
+      <div class="logo">回覧箋システム</div>
+      <div class="user-info">
+        <div class="user-details">
+          <span class="username"
+            >ユーザー名: {{ currentUser?.displayname }}</span
+          >
+          <span class="department">部署: {{ bushoName }}</span>
         </div>
-        <div v-else class="user-info">
-          <span class="username">ユーザー情報を読み込み中...</span>
-        </div>
-        <button
-          class="sign-out-button"
-          @click="handleSignOut"
-          :disabled="isSigningOut"
-        >
-          <span v-if="isSigningOut" class="loading-spinner"></span>
-          {{ isSigningOut ? 'サインアウト中...' : 'サインアウト' }}
-        </button>
+        <button @click="handleSignOut" class="btn-signout">サインアウト</button>
       </div>
     </header>
-    <div class="content-wrapper">
-      <nav class="side-menu">
-        <ul>
-          <li><router-link to="/">ホーム</router-link></li>
-          <li><router-link to="/circulars">回覧箋一覧</router-link></li>
-          <li><router-link to="/circulars/create">新規作成</router-link></li>
-        </ul>
-      </nav>
-      <main class="main-content">
-        <router-view></router-view>
-        <div v-if="errorMessage" class="error-message">
-          {{ errorMessage }}
+
+    <div class="main-content">
+      <aside class="sidebar">
+        <nav>
+          <router-link to="/" class="nav-item" exact>ホーム</router-link>
+          <router-link to="/circulars" class="nav-item">回覧箋一覧</router-link>
+          <router-link to="/circulars/create" class="nav-item"
+            >新規作成</router-link
+          >
+        </nav>
+      </aside>
+
+      <main class="content">
+        <div class="notification-container">
+          <NotificationList />
+        </div>
+        <div class="content-wrapper">
+          <div class="content-body">
+            <router-view></router-view>
+          </div>
         </div>
       </main>
     </div>
@@ -133,34 +169,42 @@ export default defineComponent({
 </template>
 
 <style scoped>
-.app-container {
+.app-layout {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  padding-top: 64px;
+  box-sizing: border-box;
 }
 
-.app-header {
+.header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 1rem 2rem;
   background-color: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  height: 64px;
 }
 
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 2rem;
-}
-
-h1 {
+.logo {
   margin: 0;
   color: #333;
   font-size: 1.5rem;
+  font-weight: 600;
 }
 
 .user-info {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.user-details {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -170,14 +214,15 @@ h1 {
 .username {
   font-weight: 500;
   color: #333;
+  font-size: 1rem;
 }
 
-.employee-id {
+.department {
   font-size: 0.875rem;
   color: #666;
 }
 
-.sign-out-button {
+.btn-signout {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -193,59 +238,93 @@ h1 {
   font-weight: 500;
 }
 
-.sign-out-button:hover:not(:disabled) {
+.btn-signout:hover:not(:disabled) {
   background-color: #106ebe;
 }
 
-.sign-out-button:disabled {
+.btn-signout:disabled {
   opacity: 0.7;
   cursor: not-allowed;
 }
 
-.content-wrapper {
-  display: flex;
+.main-content {
+  display: grid;
+  grid-template-columns: 250px 1fr;
   flex: 1;
+  margin-top: 45px;
+  width: 100vw;
+  height: calc(100vh - 64px);
 }
 
-.side-menu {
+.sidebar {
   width: 250px;
   background-color: #fff;
   border-right: 1px solid #e5e5e5;
   padding: 1rem 0;
+  height: 100%;
+  position: static;
+  overflow-y: auto;
+  transition: transform 0.3s ease;
 }
 
-.side-menu ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
 }
 
-.side-menu li {
-  margin: 0;
-}
-
-.side-menu a {
+.nav-item {
   display: block;
   padding: 0.75rem 1.5rem;
   color: #333;
   text-decoration: none;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
+  border-radius: 4px;
+  font-weight: 500;
 }
 
-.side-menu a:hover {
+.nav-item:hover {
   background-color: #f5f5f5;
 }
 
-.side-menu a.router-link-active {
+.nav-item.router-link-exact-active {
   background-color: #e5f1fb;
   color: #0078d4;
   border-left: 3px solid #0078d4;
 }
 
-.main-content {
+.content {
   flex: 1;
-  padding: 2rem;
-  background-color: #f5f5f5;
+  padding: 0.5rem 0;
+  position: relative;
+  transition: margin-left 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100%;
+  background: none;
+}
+
+.content-wrapper {
+  background: #fff;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 2.5rem 2rem;
+  width: 100%;
+  height: 100%;
+}
+
+.content-body {
+  min-height: 400px;
+}
+
+.notification-container {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  width: 300px;
+  z-index: 1000;
 }
 
 .error-message {
@@ -276,6 +355,96 @@ h1 {
   }
   100% {
     transform: rotate(360deg);
+  }
+}
+
+/* レスポンシブデザイン */
+@media (max-width: 1024px) {
+  .main-content {
+    grid-template-columns: 0 1fr;
+    height: auto;
+  }
+  .sidebar {
+    display: none;
+  }
+  .content {
+    padding: 1.5rem 0;
+    min-height: auto;
+  }
+  .content-wrapper {
+    padding: 1.5rem 0.5rem;
+    border-radius: 0;
+    box-shadow: none;
+    height: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .header {
+    padding: 1rem;
+  }
+
+  .logo {
+    font-size: 1.25rem;
+  }
+
+  .user-details {
+    display: none;
+  }
+
+  .btn-signout {
+    min-width: auto;
+    padding: 0.5rem;
+  }
+
+  .sidebar {
+    transform: translateX(-100%);
+    z-index: 999;
+  }
+
+  .sidebar.active {
+    transform: translateX(0);
+  }
+
+  .content {
+    margin-left: 0;
+    padding: 1rem 0;
+  }
+
+  .content-wrapper {
+    padding: 1rem 0.25rem;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .notification-container {
+    width: 100%;
+    max-width: 300px;
+    right: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .header {
+    padding: 0.75rem;
+  }
+
+  .logo {
+    font-size: 1.1rem;
+  }
+
+  .content {
+    padding: 0.5rem 0;
+  }
+
+  .content-wrapper {
+    padding: 0.5rem 0.1rem;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .page-actions {
+    flex-wrap: wrap;
   }
 }
 </style>

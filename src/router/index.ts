@@ -3,8 +3,9 @@ import { getCurrentUser } from 'aws-amplify/auth';
 import HomeView from '@/views/HomeView.vue';
 import Login from '@/views/Login.vue';
 import CircularListView from '@/views/CircularListView.vue';
-import CircularCreate from '@/components/circular/CircularCreate.vue';
+import CircularDetail from '@/views/CircularDetail.vue';
 import AppLayout from '@/components/layout/AppLayout.vue';
+import CircularCreateView from '@/views/CircularCreateView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -27,7 +28,12 @@ const router = createRouter({
         {
           path: 'circulars/create',
           name: 'circular-create',
-          component: CircularCreate,
+          component: CircularCreateView,
+        },
+        {
+          path: 'circulars/:id',
+          name: 'circular-detail',
+          component: CircularDetail,
         },
       ],
     },
@@ -38,15 +44,9 @@ const router = createRouter({
       meta: { requiresAuth: false },
     },
     {
-      path: '/dashboard',
-      name: 'dashboard',
-      component: () => import('@/views/Dashboard.vue'),
-      meta: { requiresAuth: true },
-    },
-    {
       path: '/create',
       name: 'create',
-      component: () => import('@/views/Create.vue'),
+      component: () => import('@/views/CircularCreateView.vue'),
       meta: { requiresAuth: true },
     },
     {

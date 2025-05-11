@@ -2,13 +2,13 @@
   <div class="home">
     <h2>ホーム</h2>
     <div class="dashboard">
-      <div class="card">
-        <h3>未処理の回覧箋</h3>
-        <p class="count">0件</p>
-      </div>
-      <div class="card">
-        <h3>期限切れの回覧箋</h3>
-        <p class="count">0件</p>
+      <div
+        class="card"
+        v-for="status in ['draft', 'in_progress', 'expired']"
+        :key="status"
+      >
+        <h3>{{ statusLabels[status] }}の回覧箋</h3>
+        <p class="count">{{ statusCounts[status] }}件</p>
       </div>
       <div class="card">
         <h3>最近の活動</h3>
@@ -19,7 +19,44 @@
 </template>
 
 <script setup lang="ts">
-// 必要に応じてデータ取得のロジックを追加
+import { circulars } from '@/mocks/mockCirculars';
+import { computed, inject } from 'vue';
+
+const currentUser = inject('currentUser') as any;
+
+function isSameBushoGroup(
+  userBusho: string | number,
+  recordBusho: string | number
+) {
+  const userNum = Number(userBusho);
+  const recordNum = Number(recordBusho);
+  if (isNaN(userNum) || isNaN(recordNum)) return false;
+  return Math.floor(userNum / 1000) === Math.floor(recordNum / 1000);
+}
+
+const statusLabels: Record<string, string> = {
+  draft: '作成中',
+  in_progress: '回覧中',
+  expired: '期限切れ',
+};
+
+const statusCounts = computed(() => {
+  const counts: Record<string, number> = {
+    draft: 0,
+    in_progress: 0,
+    expired: 0,
+  };
+  circulars.forEach((c) => {
+    if (
+      c.status !== 'completed' &&
+      currentUser?.value?.busho &&
+      isSameBushoGroup(currentUser.value.busho, c.department)
+    ) {
+      counts[c.status] = (counts[c.status] || 0) + 1;
+    }
+  });
+  return counts;
+});
 </script>
 
 <style scoped>

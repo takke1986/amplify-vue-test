@@ -13,7 +13,7 @@ export const auth = defineAuth({
         metadata: {
           metadataType: 'URL',
           metadataContent:
-            'https://login.microsoftonline.com/92b06829-9d5c-488f-ae9d-c662ec0fd807/federationmetadata/2007-06/federationmetadata.xml?appid=b88265f5-0903-49da-bc97-a9079daeb315',
+            'https://login.microsoftonline.com/92b06829-9d5c-488f-ae9d-c662ec0fd807/federationmetadata/2007-06/federationmetadata.xml?appid=d30a58bc-bbeb-47ae-a55b-15476ee2787d',
         },
         attributeMapping: {
           email:
@@ -21,6 +21,8 @@ export const auth = defineAuth({
           custom: {
             'custom:busho':
               'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/department',
+            'custom:displayname':
+              'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/displayname',
           },
         },
       },
@@ -44,6 +46,10 @@ export const auth = defineAuth({
   },
   userAttributes: {
     'custom:busho': {
+      dataType: 'String',
+      mutable: true,
+    },
+    'custom:displayname': {
       dataType: 'String',
       mutable: true,
     },

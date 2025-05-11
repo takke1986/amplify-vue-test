@@ -31,11 +31,13 @@ export default defineComponent({
 <template>
   <div v-if="isLoading" class="loading-container">
     <div class="loading-spinner"></div>
+    <p class="loading-text">認証状態を確認中...</p>
   </div>
   <router-view v-else-if="isAuthenticated" />
   <div v-else class="auth-required">
     <h2>認証が必要です</h2>
     <p>このページを表示するにはログインが必要です。</p>
+    <router-link to="/login" class="login-link">ログインページへ</router-link>
   </div>
 </template>
 
@@ -82,5 +84,26 @@ export default defineComponent({
 
 .auth-required p {
   color: #666;
+}
+
+.loading-text {
+  margin-top: 1rem;
+  color: #666;
+  font-size: 1.1rem;
+}
+
+.login-link {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background-color: #0078d4;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.login-link:hover {
+  background-color: #106ebe;
 }
 </style>
