@@ -56,7 +56,12 @@
         </div>
         <div class="form-group">
           <label for="file">添付ファイル</label>
-          <input id="file" type="file" class="form-control" />
+          <input
+            id="file"
+            type="file"
+            class="form-control"
+            @change="handleFileInput"
+          />
         </div>
         <div v-if="error" class="error-message">{{ error }}</div>
         <div class="form-actions">
@@ -72,11 +77,35 @@
       </form>
     </div>
     <div v-else class="error-message">配電ユーザーは新規作成できません。</div>
+    <!-- 画像プレビューモーダル -->
+    <div
+      v-if="showImageModal"
+      class="modal-overlay"
+      @click.self="closeImageModal"
+    >
+      <div class="modal-content">
+        <img
+          v-if="imagePreviewUrl"
+          :src="imagePreviewUrl"
+          alt="画像プレビュー"
+        />
+        <button class="modal-close" @click="closeImageModal">閉じる</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, inject, computed, Ref, watch, nextTick } from 'vue';
+import {
+  ref,
+  reactive,
+  inject,
+  computed,
+  Ref,
+  watch,
+  nextTick,
+  onMounted,
+} from 'vue';
 import { circulars as mockCirculars } from '@/mocks/mockCirculars';
 import Quill from 'quill';
 import QuillImageDropAndPaste from 'quill-image-drop-and-paste';
@@ -129,13 +158,8 @@ const image = reactive({
 });
 const blobUrl = ref<string | null>(null);
 
-const isUrl = (str: string) => {
-  try {
-    return Boolean(new URL(str));
-  } catch (e) {
-    return false;
-  }
-};
+const imagePreviewUrl = ref<string | null>(null);
+const showImageModal = ref(false);
 
 const imageHandler = (dataUrl: string, type: string) => {
   image.type = type;
@@ -335,8 +359,54 @@ const handleTempSave = () => {
   blobUrl.value = null;
 };
 
+function handleFileInput(event: Event) {
+  const input = event.target as HTMLInputElement;
+  if (input.files && input.files.length > 0) {
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      imagePreviewUrl.value = e.target?.result as string;
+      showImageModal.value = true;
+    };
+    reader.readAsDataURL(file);
+  }
+}
+function closeImageModal() {
+  showImageModal.value = false;
+  imagePreviewUrl.value = null;
+}
+
 // これでmockCircularsの変更が即時反映される
 const circulars = mockCirculars;
+
+onMounted(() => {
+  watch(
+    () => showEditor.value,
+    (val) => {
+      if (!val) return;
+      setTimeout(() => {
+        const editor = document.querySelector('#editor-container .ql-editor');
+        if (editor) {
+          const setImgClick = () => {
+            const imgs = editor.querySelectorAll('img');
+            imgs.forEach((img) => {
+              img.style.cursor = 'pointer';
+              img.onclick = (e) => {
+                imagePreviewUrl.value = (e.target as HTMLImageElement).src;
+                showImageModal.value = true;
+              };
+            });
+          };
+          setImgClick();
+          // 画像が追加された場合にも再度イベントを設定
+          const observer = new MutationObserver(setImgClick);
+          observer.observe(editor, { childList: true, subtree: true });
+        }
+      }, 0);
+    },
+    { immediate: true }
+  );
+});
 </script>
 
 <style scoped>
@@ -456,6 +526,61 @@ label {
   color: #1976d2;
   margin-bottom: 1rem;
   font-size: 1rem;
+}
+.preview-area {
+  margin-top: 2rem;
+  background: #f9f9f9;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px #0001;
+}
+.preview-content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1rem 0;
+}
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-content {
+  background: #fff;
+  border-radius: 8px;
+  padding: 2rem 2.5rem 1.5rem 2.5rem;
+  box-shadow: 0 4px 24px #0003;
+  text-align: center;
+  position: relative;
+  max-width: 90vw;
+  max-height: 80vh;
+}
+.modal-content img {
+  max-width: 60vw;
+  max-height: 60vh;
+  border-radius: 6px;
+  margin-bottom: 1.5rem;
+}
+.modal-close {
+  background: #1976d2;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.6rem 2.2rem;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+.modal-close:hover {
+  background: #005fa3;
 }
 </style>
 
