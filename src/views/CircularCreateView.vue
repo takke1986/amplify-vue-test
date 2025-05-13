@@ -171,7 +171,13 @@ const imageHandler = (dataUrl: string, type: string) => {
 
 const textPasteHander = (text: string) => {
   const Delta = Quill.import('delta');
-  return isUrl(text)
+  let isUrl = false;
+  try {
+    isUrl = Boolean(new URL(text));
+  } catch (e) {
+    isUrl = false;
+  }
+  return isUrl
     ? new Delta().insert(text, { link: text })
     : new Delta().insert(text);
 };

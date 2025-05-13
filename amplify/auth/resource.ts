@@ -13,7 +13,9 @@ export const auth = defineAuth({
         metadata: {
           metadataType: 'URL',
           metadataContent:
+            //ステージング環境
             //'https://login.microsoftonline.com/92b06829-9d5c-488f-ae9d-c662ec0fd807/federationmetadata/2007-06/federationmetadata.xml?appid=d30a58bc-bbeb-47ae-a55b-15476ee2787d',
+            //本番環境
             'https://login.microsoftonline.com/92b06829-9d5c-488f-ae9d-c662ec0fd807/federationmetadata/2007-06/federationmetadata.xml?appid=b88265f5-0903-49da-bc97-a9079daeb315',
         },
         attributeMapping: {
