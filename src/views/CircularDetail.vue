@@ -400,7 +400,7 @@ const editForm = ref({
   departments: [] as string[],
   selectedDepartment: '',
 });
-let quill: Quill | null = null;
+let quill: any = null;
 
 const currentUser = inject('currentUser') as any;
 
