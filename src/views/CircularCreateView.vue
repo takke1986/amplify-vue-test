@@ -182,7 +182,7 @@ const textPasteHander = (text: string) => {
     : new Delta().insert(text);
 };
 
-let quill: Quill | null = null;
+let quill: any = null;
 
 const editorContainer = ref<HTMLElement | null>(null);
 
@@ -381,9 +381,6 @@ function closeImageModal() {
   showImageModal.value = false;
   imagePreviewUrl.value = null;
 }
-
-// これでmockCircularsの変更が即時反映される
-const circulars = mockCirculars;
 
 onMounted(() => {
   watch(

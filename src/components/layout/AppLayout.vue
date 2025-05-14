@@ -2,7 +2,6 @@
 import { defineComponent, ref, onMounted, provide, computed } from 'vue';
 import { signOut, getCurrentUser, fetchAuthSession } from 'aws-amplify/auth';
 import { useRouter } from 'vue-router';
-import NotificationList from '@/components/notification/NotificationList.vue';
 
 type JsonObject = { [key: string]: any };
 type JsonArray = any[];
