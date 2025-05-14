@@ -418,10 +418,6 @@ const kairanSakiName = computed(
   () => departments.find((d) => d.id === kairanSakiId.value)?.name || ''
 );
 
-// 編集権限制御
-const canEdit = computed(
-  () => currentUser?.value?.busho === kairanSakiId.value
-);
 // 営業ユーザー判定
 const isEigyoUser = computed(() =>
   String(currentUser?.value?.busho).endsWith('1')
@@ -443,13 +439,6 @@ const isKairanSakiHaiden = computed(() => {
   const kairanSaki = circular.value?.circulationStatus?.[0]?.departmentId;
   return kairanSaki ? String(kairanSaki).endsWith('2') : false;
 });
-
-// ステータス選択肢
-const statusOptions = [
-  { value: 'in_progress', label: '回覧中' },
-  { value: 'remand', label: '差し戻し' },
-  { value: 'completed', label: '完了' },
-];
 
 const getDepartmentName = (id: string) => {
   return departments.find((dept) => dept.id === id)?.name || '不明な部署';
