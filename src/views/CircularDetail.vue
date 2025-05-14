@@ -606,6 +606,7 @@ const cancelEdit = () => {
   isEditMode.value = false;
 };
 
+/*
 const handleFileChange = (event: Event) => {
   const input = event.target as HTMLInputElement;
   if (input.files) {
@@ -623,6 +624,7 @@ const handleFileChange = (event: Event) => {
 const removeFile = (index: number) => {
   editForm.value.files.splice(index, 1);
 };
+*/
 
 const handleComplete = () => {
   if (!circular.value) return;
