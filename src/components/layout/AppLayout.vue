@@ -269,23 +269,25 @@ export default defineComponent({
 }
 
 .main-content {
-  display: grid;
-  grid-template-columns: 250px 1fr;
-  flex: 1;
-  margin-top: 45px;
-  width: 100vw;
+  display: block;
+  margin-top: 0;
+  margin-left: 250px; /* サイドバー分ずらす */
+  width: calc(100vw - 250px);
   height: calc(100vh - 64px);
+  background: #fff;
 }
 
 .sidebar {
+  position: fixed;
+  top: 64px; /* ヘッダー分下げる */
+  left: 0;
   width: 250px;
+  height: calc(100vh - 64px);
   background-color: #fff;
   border-right: 1px solid #e5e5e5;
   padding: 1rem 0;
-  height: 100%;
-  position: static;
   overflow-y: auto;
-  transition: transform 0.3s ease;
+  z-index: 100;
 }
 
 .sidebar nav {
@@ -324,7 +326,7 @@ export default defineComponent({
   flex-direction: column;
   width: 100%;
   min-height: 100%;
-  background: none;
+  background: #fff;
 }
 
 .content-wrapper {
@@ -382,7 +384,8 @@ export default defineComponent({
 /* レスポンシブデザイン */
 @media (max-width: 1024px) {
   .main-content {
-    grid-template-columns: 0 1fr;
+    margin-left: 0;
+    width: 100vw;
     height: auto;
   }
   .sidebar {
