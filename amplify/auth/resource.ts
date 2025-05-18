@@ -35,7 +35,7 @@ export const auth = defineAuth({
         'http://localhost:3000/index.html',
         'http://localhost:3000/index.html?',
         'http://localhost:3000/amplify-vue-test/',
-        'https://main.dg4wq6dpc31ft.amplifyapp.com',
+        'https://main.dg4wq6dpc31ft.amplifyapp.com/',
       ],
       logoutUrls: [
         'http://localhost:3000/',
