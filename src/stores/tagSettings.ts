@@ -11,6 +11,8 @@ export interface TagSetting {
   name: string;
   color: string;
   processSettings: ProcessSetting[];
+  createdBy?: string;
+  createdAt?: string;
 }
 
 const PROCESS_COUNT = 15;
@@ -25,6 +27,8 @@ const initialTagSettings: TagSetting[] = [
       mailNotify: false,
       todoMessages: i === 0 ? ['至急対応してください'] : [],
     })),
+    createdBy: 'システム',
+    createdAt: '2024-06-01T00:00:00Z',
   },
   {
     name: '連絡',
@@ -34,6 +38,8 @@ const initialTagSettings: TagSetting[] = [
       mailNotify: false,
       todoMessages: i === 1 ? ['ご確認ください'] : [],
     })),
+    createdBy: 'システム',
+    createdAt: '2024-06-01T00:00:00Z',
   },
 ];
 
