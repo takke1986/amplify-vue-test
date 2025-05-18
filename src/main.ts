@@ -3,7 +3,7 @@ import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
 import { Amplify } from 'aws-amplify';
-import amplify_outputs from '../amplify_outputs.json';
+import amplify_outputs from '../stage_amplify_outputs.json';
 import router from './router';
 import '@fortawesome/fontawesome-free/css/all.css';
 import Quill from 'quill';

@@ -2,13 +2,9 @@
   <div class="home">
     <h2>ホーム</h2>
     <div class="dashboard">
-      <div
-        class="card"
-        v-for="status in ['draft', 'in_progress', 'expired']"
-        :key="status"
-      >
-        <h3>{{ statusLabels[status] }}の回覧箋</h3>
-        <p class="count">{{ statusCounts[status] }}件</p>
+      <div class="card">
+        <h3>{{ statusLabels['expired'] }}の回覧箋</h3>
+        <p class="count">{{ statusCounts['expired'] }}件</p>
       </div>
       <div class="card">
         <h3>最近の活動</h3>

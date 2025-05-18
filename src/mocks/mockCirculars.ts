@@ -25,6 +25,7 @@ export interface Circular {
   circulationStatus: CirculationStatus[];
   updatedBy: string;
   updatedAt: string;
+  process: number;
 }
 
 export const departments = Array.from({ length: 9 }, (_, i) => [
@@ -68,6 +69,7 @@ export const specialCircular: Circular = {
   ],
   updatedBy: '配電作成者',
   updatedAt: '2024-04-01',
+  process: 1,
 };
 
 // 1〜9部署の配電で回覧中のデータを追加
@@ -101,6 +103,7 @@ export const haidenInProgressCirculars: Circular[] = Array.from(
       ],
       updatedBy: `${i + 1}部署配電作成者`,
       updatedAt: '2024-04-01',
+      process: Math.min(i + 2, 16),
     };
   }
 );
@@ -138,6 +141,7 @@ export const eigyoToHaidenInProgressMockMany: Circular[] = Array.from(
       ],
       updatedBy: `${group}部署営業作成者`,
       updatedAt: '2024-04-01',
+      process: Math.min(i + 2, 16),
     };
   }
 );
@@ -174,6 +178,7 @@ export const eigyoToHaidenInProgressCirculars: Circular[] = Array.from(
       ],
       updatedBy: `${i + 1}部署営業作成者`,
       updatedAt: '2024-04-01',
+      process: Math.min(i + 2, 16),
     };
   }
 );
@@ -225,6 +230,7 @@ export const circulars: Circular[] = [
       ],
       updatedBy: creator,
       updatedAt: createdAt,
+      process: Math.min(i + 2, 15),
     };
   }),
 ];
@@ -235,3 +241,23 @@ function getKairanSaki(busho: string | number | undefined): string {
   if (isNaN(num)) return '';
   return num % 10 === 1 ? String(num + 1) : String(num - 1);
 }
+
+// 工程名リスト（1〜16工程、日本語名称は仮でOK）
+export const processNames = [
+  '',
+  '設計',
+  '見積',
+  '発注',
+  '製作',
+  '検査',
+  '出荷',
+  '搬入',
+  '据付',
+  '配線',
+  '試運転',
+  '引渡',
+  '保守',
+  '点検',
+  '改修',
+  '完了',
+];

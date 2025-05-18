@@ -8,67 +8,116 @@
     </div>
 
     <div class="filters">
-      <div class="filter-items">
-        <div class="filter-group">
-          <label for="keyword">キーワード</label>
-          <input
-            type="text"
-            id="keyword"
-            v-model="filter.keyword"
-            class="form-control"
-            placeholder="タイトル・作成者・回覧先で検索"
-          />
+      <div class="filter-row">
+        <div class="filter-items">
+          <div class="filter-group">
+            <label for="title">タイトル</label>
+            <input
+              type="text"
+              id="title"
+              v-model="filter.title"
+              class="form-control"
+              placeholder="タイトルで検索"
+            />
+          </div>
+          <div class="filter-group">
+            <label for="creator">作成者</label>
+            <input
+              type="text"
+              id="creator"
+              v-model="filter.creator"
+              class="form-control"
+              placeholder="作成者で検索"
+            />
+          </div>
+          <div class="filter-group">
+            <label for="date-start">作成日（開始）</label>
+            <input
+              type="date"
+              id="date-start"
+              v-model="filter.dateRange.start"
+              class="form-control"
+            />
+          </div>
+          <div class="filter-group">
+            <label for="date-end">作成日（終了）</label>
+            <input
+              type="date"
+              id="date-end"
+              v-model="filter.dateRange.end"
+              class="form-control"
+            />
+          </div>
+          <div class="filter-group">
+            <label for="update-date-start">更新日（開始）</label>
+            <input
+              type="date"
+              id="update-date-start"
+              v-model="filter.updateDateRange.start"
+              class="form-control"
+            />
+          </div>
+          <div class="filter-group">
+            <label for="update-date-end">更新日（終了）</label>
+            <input
+              type="date"
+              id="update-date-end"
+              v-model="filter.updateDateRange.end"
+              class="form-control"
+            />
+          </div>
+          <div class="filter-group">
+            <label for="process">工程</label>
+            <select id="process" v-model="filter.process" class="form-control">
+              <option value="">すべて</option>
+              <option v-for="idx in 15" :key="idx" :value="idx">
+                {{ idx }}: {{ processNames[idx] }}
+              </option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="updatedBy">更新者</label>
+            <input
+              type="text"
+              id="updatedBy"
+              v-model="filter.updatedBy"
+              class="form-control"
+              placeholder="更新者で検索"
+            />
+          </div>
+          <div class="filter-group tag-filter-group">
+            <label for="tag-filter">タグ</label>
+            <div class="tag-filter-row-horizontal">
+              <div class="tag-suggest-wrapper">
+                <input
+                  id="tag-filter"
+                  v-model="tagInput"
+                  @input="onTagInput"
+                  @focus="showTagSuggest = true"
+                  @blur="onTagBlur"
+                  class="form-control"
+                  placeholder="タグ名で検索"
+                  autocomplete="off"
+                />
+                <ul
+                  v-if="showTagSuggest && filteredTagSuggestions.length"
+                  class="tag-suggest-list"
+                >
+                  <li
+                    v-for="tag in filteredTagSuggestions"
+                    :key="tag"
+                    @mousedown.prevent="selectTagSuggestion(tag)"
+                  >
+                    {{ tag }}
+                  </li>
+                </ul>
+              </div>
+              <button @click="resetFilters" class="btn-reset tag-reset-btn">
+                リセット
+              </button>
+            </div>
+          </div>
         </div>
-
-        <div class="filter-group">
-          <label for="status">ステータス</label>
-          <select v-model="filter.status" id="status" class="form-control">
-            <option value="not_completed">未完了のみ</option>
-            <option value="">すべて</option>
-            <option value="draft">作成中</option>
-            <option value="in_progress">回覧中</option>
-            <option value="completed">完了</option>
-            <option value="expired">期限切れ</option>
-          </select>
-        </div>
-
-        <div class="filter-group">
-          <label for="date-start">作成日（開始）</label>
-          <input
-            type="date"
-            id="date-start"
-            v-model="filter.dateRange.start"
-            class="form-control"
-          />
-        </div>
-
-        <div class="filter-group">
-          <label for="date-end">作成日（終了）</label>
-          <input
-            type="date"
-            id="date-end"
-            v-model="filter.dateRange.end"
-            class="form-control"
-          />
-        </div>
-
-        <div class="filter-group">
-          <label for="department">回覧先</label>
-          <select
-            v-model="filter.department"
-            id="department"
-            class="form-control"
-          >
-            <option value="">すべて</option>
-            <option value="eigyo">営業</option>
-            <option value="haiden">配電</option>
-          </select>
-        </div>
-      </div>
-      <div class="filter-reset">
-        <button @click="resetFilters" class="btn-reset">
-          フィルターをリセット
-        </button>
       </div>
     </div>
 
@@ -89,32 +138,174 @@
       <table class="circular-table">
         <thead>
           <tr>
-            <th>タイトル</th>
-            <th>作成者</th>
-            <th>作成日</th>
-            <th>期限</th>
-            <th>回覧先</th>
-            <th>ステータス</th>
-            <th>更新者</th>
-            <th>更新日</th>
+            <th @click="sortBy('title')" class="sortable">
+              タイトル
+              <span v-if="sortKey === 'title'">
+                <span v-if="sortOrder === 'asc'">▲</span>
+                <span v-else>▼</span>
+              </span>
+            </th>
+            <th @click="sortBy('creator')" class="sortable">
+              作成者
+              <span v-if="sortKey === 'creator'">
+                <span v-if="sortOrder === 'asc'">▲</span>
+                <span v-else>▼</span>
+              </span>
+            </th>
+            <th @click="sortBy('createdAt')" class="sortable">
+              作成日
+              <span v-if="sortKey === 'createdAt'">
+                <span v-if="sortOrder === 'asc'">▲</span>
+                <span v-else>▼</span>
+              </span>
+            </th>
+            <th @click="sortBy('deadline')" class="sortable">
+              期限
+              <span v-if="sortKey === 'deadline'">
+                <span v-if="sortOrder === 'asc'">▲</span>
+                <span v-else>▼</span>
+              </span>
+            </th>
+            <th @click="sortBy('process')" class="sortable">
+              工程
+              <span v-if="sortKey === 'process'">
+                <span v-if="sortOrder === 'asc'">▲</span>
+                <span v-else>▼</span>
+              </span>
+            </th>
+            <th @click="sortBy('tags')" class="sortable">
+              タグ
+              <span v-if="sortKey === 'tags'">
+                <span v-if="sortOrder === 'asc'">▲</span>
+                <span v-else>▼</span>
+              </span>
+            </th>
+            <th @click="sortBy('updatedBy')" class="sortable">
+              更新者
+              <span v-if="sortKey === 'updatedBy'">
+                <span v-if="sortOrder === 'asc'">▲</span>
+                <span v-else>▼</span>
+              </span>
+            </th>
+            <th @click="sortBy('updatedAt')" class="sortable">
+              更新日
+              <span v-if="sortKey === 'updatedAt'">
+                <span v-if="sortOrder === 'asc'">▲</span>
+                <span v-else>▼</span>
+              </span>
+            </th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="circular in paginatedCirculars" :key="circular.id">
-            <td>{{ circular.title }}</td>
-            <td>{{ circular.creator }}</td>
+            <td>
+              <span class="ellipsis-cell" :title="circular.title">{{
+                circular.title
+              }}</span>
+            </td>
+            <td>
+              <span class="ellipsis-cell" :title="circular.creator">{{
+                circular.creator
+              }}</span>
+            </td>
             <td>{{ formatDate(circular.createdAt) }}</td>
             <td>{{ formatDate(circular.deadline) }}</td>
             <td>
-              {{ kairanSakiName(circular.department) }}
+              <div style="min-width: 150px">
+                <div class="process-header">
+                  <span class="process-number">{{ circular.process }}</span>
+                  <span class="process-total"
+                    >/{{ processNames.length - 1 }}</span
+                  >
+                  <span class="process-name">{{
+                    processNames[circular.process]
+                  }}</span>
+                </div>
+                <div class="process-steps-container">
+                  <!-- 1-8工程 -->
+                  <div class="process-steps">
+                    <div
+                      v-for="i in 8"
+                      :key="i"
+                      class="process-step"
+                      :class="{
+                        'process-step-active': i <= circular.process,
+                        'process-step-current': i === circular.process,
+                      }"
+                      :title="`${i}工程: ${processNames[i]}`"
+                    ></div>
+                  </div>
+                  <!-- 9-16工程 -->
+                  <div class="process-steps">
+                    <div
+                      v-for="i in 7"
+                      :key="i + 7"
+                      class="process-step"
+                      :class="{
+                        'process-step-active': i + 7 <= circular.process,
+                        'process-step-current': i + 7 === circular.process,
+                      }"
+                      :title="`${i + 8}工程: ${processNames[i + 8]}`"
+                    ></div>
+                  </div>
+                </div>
+              </div>
             </td>
             <td>
-              <span :class="['status-badge', circular.status]">
-                {{ getStatusText(circular.status) }}
-              </span>
+              <div
+                class="tag-cell"
+                v-if="Array.isArray(circular.tags) && circular.tags.length"
+              >
+                <template
+                  v-for="(tag, _) in circular.tags.slice(0, 2)"
+                  :key="tag.name"
+                >
+                  <span
+                    class="tag-badge ellipsis-cell"
+                    :style="{
+                      background: tag.color,
+                      color: '#fff',
+                      maxWidth: '80px',
+                    }"
+                    :title="tag.name"
+                  >
+                    {{
+                      tag.name.length > 8
+                        ? tag.name.slice(0, 8) + '…'
+                        : tag.name
+                    }}
+                  </span>
+                </template>
+                <span
+                  v-if="circular.tags.length > 2"
+                  class="tag-more"
+                  :title="circular.tags.map((t: Tag) => t.name).join(', ')"
+                >
+                  +{{ circular.tags.length - 2 }}
+                </span>
+                <div class="tag-tooltip">
+                  <span
+                    v-for="tag in circular.tags"
+                    :key="tag.name"
+                    class="tag-badge"
+                    :style="{
+                      background: tag.color,
+                      color: '#fff',
+                      marginRight: '6px',
+                    }"
+                  >
+                    {{ tag.name }}
+                  </span>
+                </div>
+              </div>
+              <div v-else>-</div>
             </td>
-            <td>{{ circular.updatedBy }}</td>
+            <td>
+              <span class="ellipsis-cell" :title="circular.updatedBy">{{
+                circular.updatedBy
+              }}</span>
+            </td>
             <td>{{ formatDate(circular.updatedAt) }}</td>
             <td>
               <router-link :to="'/circulars/' + circular.id" class="btn-detail">
@@ -142,22 +333,35 @@
       </button>
     </div>
     <footer class="footer">© 2025 回覧箋システム</footer>
+    <div class="scroll-guide" id="scroll-guide">{{ guideText }}</div>
+    <div class="scroll-fade"></div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, inject, onMounted } from 'vue';
-import { circulars, departments } from '@/mocks/mockCirculars';
+import { ref, computed, watch, onMounted, inject, onUnmounted } from 'vue';
+import { circulars, processNames } from '@/mocks/mockCirculars';
+
+interface Tag {
+  name: string;
+  color: string;
+}
 
 const FILTER_KEY = 'circulars_filter';
 const defaultFilter = {
-  keyword: '',
-  status: 'not_completed',
+  title: '',
+  creator: '',
   dateRange: {
     start: '',
     end: '',
   },
-  department: '',
+  updateDateRange: {
+    start: '',
+    end: '',
+  },
+  process: '',
+  updatedBy: '',
+  tag: '',
 };
 const filter = ref({ ...defaultFilter });
 
@@ -197,57 +401,7 @@ const currentUser = inject('currentUser') as any;
 const filteredCirculars = computed(() => {
   let result = circulars as any[];
 
-  // キーワード検索
-  if (filter.value.keyword) {
-    const kw = filter.value.keyword.toLowerCase();
-    result = result.filter(
-      (c: any) =>
-        c.title.toLowerCase().includes(kw) ||
-        c.creator.toLowerCase().includes(kw) ||
-        (c.recipients &&
-          c.recipients.some((r: string) => r.toLowerCase().includes(kw)))
-    );
-  }
-
-  // ステータスでフィルタリング
-  if (filter.value.status) {
-    if (filter.value.status === 'not_completed') {
-      result = result.filter((c: any) => c.status !== 'completed');
-    } else {
-      result = result.filter((c: any) => c.status === filter.value.status);
-    }
-  }
-
-  // 日付範囲でフィルタリング
-  if (filter.value.dateRange.start) {
-    const startDate = new Date(filter.value.dateRange.start);
-    result = result.filter((c: any) => new Date(c.createdAt) >= startDate);
-  }
-  if (filter.value.dateRange.end) {
-    const endDate = new Date(filter.value.dateRange.end);
-    result = result.filter((c: any) => new Date(c.createdAt) <= endDate);
-  }
-
-  // 回覧先でフィルタリング（営業・配電）
-  if (filter.value.department === 'eigyo') {
-    result = result.filter(
-      (c: any) =>
-        c.circulationStatus &&
-        c.circulationStatus.some((cs: any) =>
-          String(cs.departmentId).endsWith('1')
-        )
-    );
-  } else if (filter.value.department === 'haiden') {
-    result = result.filter(
-      (c: any) =>
-        c.circulationStatus &&
-        c.circulationStatus.some((cs: any) =>
-          String(cs.departmentId).endsWith('2')
-        )
-    );
-  }
-
-  // 部署グループでフィルタリング（作成者または回覧先のいずれかが同じグループなら表示）
+  // まずログイン者の部署グループでフィルタリング
   if (currentUser?.value?.busho) {
     const userBusho = currentUser.value.busho;
     result = result.filter((c: any) => {
@@ -263,6 +417,64 @@ const filteredCirculars = computed(() => {
     });
   }
 
+  // タイトルフィルタ
+  if (filter.value.title) {
+    const titleKw = filter.value.title.toLowerCase();
+    result = result.filter((c: any) => c.title.toLowerCase().includes(titleKw));
+  }
+
+  // 作成者フィルタ
+  if (filter.value.creator) {
+    const creatorKw = filter.value.creator.toLowerCase();
+    result = result.filter((c: any) =>
+      c.creator.toLowerCase().includes(creatorKw)
+    );
+  }
+
+  // 工程フィルタ
+  if (filter.value.process) {
+    result = result.filter(
+      (c: any) => String(c.process) === String(filter.value.process)
+    );
+  }
+
+  // 更新者フィルタ
+  if (filter.value.updatedBy) {
+    const updatedByKw = filter.value.updatedBy.toLowerCase();
+    result = result.filter(
+      (c: any) => c.updatedBy && c.updatedBy.toLowerCase().includes(updatedByKw)
+    );
+  }
+
+  // 作成日範囲でフィルタリング
+  if (filter.value.dateRange.start) {
+    const startDate = new Date(filter.value.dateRange.start);
+    result = result.filter((c: any) => new Date(c.createdAt) >= startDate);
+  }
+  if (filter.value.dateRange.end) {
+    const endDate = new Date(filter.value.dateRange.end);
+    result = result.filter((c: any) => new Date(c.createdAt) <= endDate);
+  }
+
+  // 更新日範囲でフィルタリング
+  if (filter.value.updateDateRange.start) {
+    const updateStart = new Date(filter.value.updateDateRange.start);
+    result = result.filter((c: any) => new Date(c.updatedAt) >= updateStart);
+  }
+  if (filter.value.updateDateRange.end) {
+    const updateEnd = new Date(filter.value.updateDateRange.end);
+    result = result.filter((c: any) => new Date(c.updatedAt) <= updateEnd);
+  }
+
+  // タグフィルタ
+  if (filter.value.tag) {
+    result = result.filter(
+      (c: any) =>
+        Array.isArray(c.tags) &&
+        c.tags.some((t: any) => t.name === filter.value.tag)
+    );
+  }
+
   return result;
 });
 
@@ -272,16 +484,6 @@ const resetFilters = () => {
 
 const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString('ja-JP');
-};
-
-const getStatusText = (status: string) => {
-  const statusMap: Record<string, string> = {
-    draft: '作成中',
-    in_progress: '回覧中',
-    completed: '完了',
-    expired: '期限切れ',
-  };
-  return statusMap[status] || status;
 };
 
 // ページネーション用の状態
@@ -295,9 +497,55 @@ const totalPages = computed(() => {
   );
 });
 
+const sortKey = ref('');
+const sortOrder = ref<'asc' | 'desc'>('asc');
+
+function sortBy(key: string) {
+  if (sortKey.value === key) {
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortKey.value = key;
+    sortOrder.value = 'asc';
+  }
+}
+
+const sortedCirculars = computed(() => {
+  const arr = [...filteredCirculars.value];
+  if (!sortKey.value) return arr;
+  return arr.sort((a, b) => {
+    let aVal = a[sortKey.value];
+    let bVal = b[sortKey.value];
+    // 日付型はDateとして比較
+    if (
+      sortKey.value === 'createdAt' ||
+      sortKey.value === 'deadline' ||
+      sortKey.value === 'updatedAt'
+    ) {
+      aVal = new Date(aVal).getTime();
+      bVal = new Date(bVal).getTime();
+    } else if (sortKey.value === 'tags') {
+      // タグは1つ目のタグ名で比較
+      aVal =
+        Array.isArray(aVal) && aVal.length > 0
+          ? aVal[0].name.toLowerCase()
+          : '';
+      bVal =
+        Array.isArray(bVal) && bVal.length > 0
+          ? bVal[0].name.toLowerCase()
+          : '';
+    } else if (typeof aVal === 'string' && typeof bVal === 'string') {
+      aVal = aVal.toLowerCase();
+      bVal = bVal.toLowerCase();
+    }
+    if (aVal < bVal) return sortOrder.value === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortOrder.value === 'asc' ? 1 : -1;
+    return 0;
+  });
+});
+
 const paginatedCirculars = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value;
-  return filteredCirculars.value.slice(start, start + itemsPerPage.value);
+  return sortedCirculars.value.slice(start, start + itemsPerPage.value);
 });
 
 const goToPage = (page: number) => {
@@ -367,23 +615,65 @@ const paginationRange = computed(() => {
   return range;
 });
 
-function getKairanSaki(busho: string | number | undefined): string {
-  if (busho === undefined) return '';
-  const num = Number(busho);
-  if (isNaN(num)) return '';
-  return num % 10 === 1 ? String(num + 1) : String(num - 1);
+// ↓ スクロールガイド用
+const guideText = ref('↓ まだ下に続きがあります');
+function handleScrollGuide() {
+  const scrollGuide = document.getElementById('scroll-guide');
+  if (!scrollGuide) return;
+  const scrollY = window.scrollY || window.pageYOffset;
+  const windowH = window.innerHeight;
+  const docH = document.documentElement.scrollHeight;
+  if (scrollY + windowH >= docH - 2) {
+    guideText.value = '--- 最下部です ---';
+  } else {
+    guideText.value = '↓ まだ下に続きがあります';
+  }
 }
-const kairanSakiName = (department: string) =>
-  departments.find(
-    (d: { id: string; name: string }) => d.id === getKairanSaki(department)
-  )?.name || '';
+onMounted(() => {
+  window.addEventListener('scroll', handleScrollGuide);
+});
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScrollGuide);
+});
+// ↑ スクロールガイド用
+
+// 全回覧からユニークなタグ名一覧を取得
+const uniqueTags = computed(() => {
+  const tags = new Set<string>();
+  (circulars as { tags?: Tag[] }[]).forEach((c) => {
+    if (Array.isArray(c.tags)) {
+      c.tags.forEach((t: Tag) => tags.add(t.name));
+    }
+  });
+  return Array.from(tags);
+});
+
+// タグサジェスト用
+const tagInput = ref('');
+const showTagSuggest = ref(false);
+const filteredTagSuggestions = computed(() => {
+  if (!tagInput.value) return uniqueTags.value;
+  return uniqueTags.value.filter((t) => t.includes(tagInput.value));
+});
+function onTagInput() {
+  filter.value.tag = tagInput.value;
+  showTagSuggest.value = true;
+}
+function selectTagSuggestion(tag: string) {
+  tagInput.value = tag;
+  filter.value.tag = tag;
+  showTagSuggest.value = false;
+}
+function onTagBlur() {
+  setTimeout(() => (showTagSuggest.value = false), 100);
+}
 </script>
 
 <style scoped>
 .circular-list {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
+  max-width: 1600px;
+  margin: 0.5rem auto 0 auto;
+  padding: 1.5rem 2rem 2.5rem 2rem;
   background: #fff;
   min-height: 100vh;
 }
@@ -392,7 +682,11 @@ const kairanSakiName = (department: string) =>
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 1rem;
+}
+
+h2 {
+  margin-bottom: 1.2rem;
 }
 
 .btn-create {
@@ -401,34 +695,45 @@ const kairanSakiName = (department: string) =>
   color: white;
   text-decoration: none;
   border-radius: 4px;
+  font-size: 16pt;
 }
 
 .filters {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 2rem;
-  padding: 1rem;
+  margin-bottom: 1.2rem;
+  padding: 0.7rem;
   background-color: #f9fafb;
   border-radius: 0.5rem;
+  position: relative;
+}
+
+.filter-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .filter-items {
   display: flex;
+  flex-direction: row;
   flex-wrap: wrap;
   gap: 1rem;
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .filter-group {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.3rem;
+  min-width: 140px;
+  max-width: 180px;
+  flex: 1 1 140px;
 }
 
 .filter-group label {
-  font-size: 0.875rem;
+  font-size: 16pt;
   color: #374151;
   font-weight: 500;
 }
@@ -437,10 +742,15 @@ const kairanSakiName = (department: string) =>
   padding: 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
+  font-size: 16pt;
+  height: 40px;
+  box-sizing: border-box;
+  vertical-align: bottom;
 }
 
 .table-container {
   overflow-x: auto;
+  margin-top: 0.5rem;
 }
 
 .circular-table {
@@ -453,6 +763,7 @@ const kairanSakiName = (department: string) =>
   padding: 12px;
   text-align: left;
   border-bottom: 1px solid #ddd;
+  font-size: 16pt;
 }
 
 .circular-table th {
@@ -485,14 +796,14 @@ const kairanSakiName = (department: string) =>
 }
 
 .btn-reset {
-  align-self: flex-end;
-  padding: 0.5rem 1rem;
+  display: inline-block;
+  padding: 0.3rem 0.3rem;
   background-color: #f3f4f6;
   color: #374151;
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 15pt;
   transition: all 0.2s;
 }
 
@@ -506,7 +817,7 @@ const kairanSakiName = (department: string) =>
   color: white;
   text-decoration: none;
   border-radius: 0.25rem;
-  font-size: 0.875rem;
+  font-size: 16pt;
   transition: background-color 0.2s;
 }
 
@@ -532,6 +843,7 @@ const kairanSakiName = (department: string) =>
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s, color 0.2s, border-color 0.2s;
+  font-size: 16pt;
 }
 .pagination button.active {
   background: #0078d4;
@@ -556,13 +868,14 @@ const kairanSakiName = (department: string) =>
   margin-bottom: 1rem;
 }
 .pagination-controls label {
-  font-size: 0.95rem;
+  font-size: 16pt;
   color: #333;
 }
 .pagination-controls select {
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   border: 1px solid #ccc;
+  font-size: 16pt;
 }
 
 .footer {
@@ -570,7 +883,7 @@ const kairanSakiName = (department: string) =>
   padding: 1.5rem 0 0 0;
   text-align: center;
   color: #888;
-  font-size: 0.95rem;
+  font-size: 16pt;
 }
 
 .recipient-badge {
@@ -583,10 +896,210 @@ const kairanSakiName = (department: string) =>
   margin-right: 2px;
 }
 
-.filter-reset {
+.process-header {
+  display: flex;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.process-number {
+  font-size: 1.2em;
+  font-weight: bold;
+  color: #1976d2;
+}
+
+.process-total {
+  color: #666;
+  font-size: 0.9em;
+  margin-right: 4px;
+}
+
+.process-name {
+  font-weight: 600;
+  color: #444;
+  background: #f5f5f5;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  margin-left: 4px;
+}
+
+.process-steps-container {
+  margin-top: 6px;
   display: flex;
   flex-direction: column;
+  gap: 5px;
+}
+
+.process-steps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: left;
+  position: relative;
+  gap: 6px;
+}
+
+.process-step {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e0e0e0;
+  position: relative;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px #ddd;
+}
+
+.process-step-active {
+  background: #4caf50;
+  box-shadow: 0 0 0 1px #4caf50;
+}
+
+.process-step-current {
+  background: #1976d2;
+  box-shadow: 0 0 0 1px #1976d2;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(25, 118, 210, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(25, 118, 210, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(25, 118, 210, 0);
+  }
+}
+
+.scroll-guide {
+  position: sticky;
+  bottom: 0;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.95);
+  text-align: center;
+  font-size: 1.1em;
+  color: #1976d2;
+  padding: 0.5em 0 0.7em 0;
+  z-index: 10;
+  pointer-events: none;
+  user-select: none;
+  letter-spacing: 0.1em;
+}
+.scroll-fade {
+  position: sticky;
+  bottom: 0;
+  width: 100%;
+  height: 40px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff 80%);
+  pointer-events: none;
+  z-index: 9;
+}
+
+.tag-cell {
+  position: relative;
+  display: inline-block;
+  max-width: 180px;
+}
+.tag-badge {
+  border-radius: 6px;
+  padding: 2px 10px;
+  margin-right: 6px;
+  font-weight: 600;
+  font-size: 0.95em;
+  display: inline-block;
+  white-space: nowrap;
+  transition: filter 0.2s;
+}
+.tag-more {
+  background: #bdbdbd;
+  color: #fff;
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-weight: 600;
+  font-size: 0.95em;
+  cursor: pointer;
+  display: inline-block;
+  vertical-align: middle;
+}
+.tag-cell:hover .tag-tooltip {
+  display: block;
+}
+.tag-tooltip {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 120%;
+  background: #fff;
+  border: 1px solid #bdbdbd;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px #0002;
+  padding: 8px 12px;
+  z-index: 20;
+  min-width: 120px;
+  white-space: nowrap;
+}
+
+.ellipsis-cell {
+  display: inline-block;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.tag-badge.ellipsis-cell {
+  max-width: 80px;
+}
+
+.tag-filter-row-horizontal {
+  display: flex;
+  flex-direction: row;
   align-items: flex-end;
-  margin-left: auto;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.tag-suggest-wrapper {
+  width: 100%;
+  max-width: 320px;
+}
+.tag-reset-btn {
+  margin-left: 0;
+  margin-top: 0;
+  min-width: 80px;
+  max-width: 120px;
+  height: 40px;
+  width: auto;
+  box-sizing: border-box;
+}
+
+.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.sortable span {
+  font-size: 0.9em;
+  margin-left: 4px;
+  color: #1976d2;
+}
+
+.filter-group.tag-filter-group {
+  flex-basis: 100%;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 700px) {
+  .tag-filter-row-horizontal {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.3rem;
+  }
+  .tag-suggest-wrapper,
+  .tag-reset-btn {
+    max-width: 100%;
+    min-width: 0;
+  }
 }
 </style>

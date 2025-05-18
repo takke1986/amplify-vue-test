@@ -1,0 +1,38 @@
+export const departments = [
+  {
+    id: 1,
+    code: '1001',
+    name: '営業部',
+    affiliation: '営業',
+    role: '一般',
+    emails: 'eigyo@example.com',
+    isEditing: false,
+  },
+  {
+    id: 2,
+    code: '1002',
+    name: '配電部',
+    affiliation: '配電',
+    role: '管理者',
+    emails: 'haifu@example.com',
+    isEditing: false,
+  },
+  {
+    id: 3,
+    code: '2001',
+    name: '営業部',
+    affiliation: '営業',
+    role: '管理者',
+    emails: 'eigyo@example.com',
+    isEditing: false,
+  },
+  {
+    id: 4,
+    code: '2002',
+    name: '配電部',
+    affiliation: '配電',
+    role: '管理者',
+    emails: 'haifu@example.com',
+    isEditing: false,
+  },
+];

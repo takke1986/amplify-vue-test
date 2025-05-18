@@ -38,13 +38,39 @@
           />
         </div>
         <div class="form-group">
-          <label>回覧先（自動決定）<span class="required">*</span></label>
-          <input
-            type="text"
-            :value="kairanSakiName"
-            class="form-control"
-            readonly
-          />
+          <label for="process">工程<span class="required">*</span></label>
+          <div class="process-select-buttons">
+            <button
+              v-for="n in 15"
+              :key="n"
+              type="button"
+              :class="['process-btn', { selected: process === n }]"
+              @click="process = n"
+            >
+              {{ processNames[n] }}
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>タグ</label>
+          <div class="tag-select-btn-list">
+            <button
+              v-for="tag in tagSettings"
+              :key="tag.name"
+              type="button"
+              :class="['tag-select-btn', { selected: isTagSelected(tag.name) }]"
+              :style="{
+                background: tag.color,
+                color: '#fff',
+                marginRight: '8px',
+                marginBottom: '8px',
+              }"
+              @click="toggleTag(tag.name)"
+            >
+              {{ tag.name }}
+              <span v-if="isTagSelected(tag.name)">✓</span>
+            </button>
+          </div>
         </div>
         <div class="form-group">
           <label>本文<span class="required">*</span></label>
@@ -53,15 +79,35 @@
             class="quill-editor"
             ref="editorContainer"
           ></div>
-        </div>
-        <div class="form-group">
-          <label for="file">添付ファイル</label>
-          <input
-            id="file"
-            type="file"
-            class="form-control"
-            @change="handleFileInput"
-          />
+          <div class="form-group">
+            <label for="url-link">URLリンク</label>
+            <div class="url-link-input-group">
+              <input
+                id="url-link"
+                v-model="urlInput"
+                type="url"
+                class="form-control"
+                placeholder="https://example.com/"
+              />
+              <button type="button" class="btn-add-url" @click="addUrlLink">
+                追加
+              </button>
+            </div>
+            <ul class="url-link-list">
+              <li v-for="(url, idx) in urlLinks" :key="url">
+                <a :href="url" target="_blank" rel="noopener noreferrer">{{
+                  url
+                }}</a>
+                <button
+                  type="button"
+                  class="btn-remove-url"
+                  @click="removeUrlLink(idx)"
+                >
+                  削除
+                </button>
+              </li>
+            </ul>
+          </div>
         </div>
         <div v-if="error" class="error-message">{{ error }}</div>
         <div class="form-actions">
@@ -69,9 +115,9 @@
           <button
             type="button"
             class="btn-submit btn-secondary"
-            @click="handleTempSave"
+            @click="handleReset"
           >
-            一時保存
+            リセット
           </button>
         </div>
       </form>
@@ -92,6 +138,8 @@
         <button class="modal-close" @click="closeImageModal">閉じる</button>
       </div>
     </div>
+    <div class="scroll-guide" id="scroll-guide">{{ guideText }}</div>
+    <div class="scroll-fade"></div>
   </div>
 </template>
 
@@ -105,8 +153,14 @@ import {
   watch,
   nextTick,
   onMounted,
+  onUnmounted,
 } from 'vue';
-import { circulars as mockCirculars } from '@/mocks/mockCirculars';
+import {
+  circulars as mockCirculars,
+  processNames,
+} from '@/mocks/mockCirculars';
+import { storeToRefs } from 'pinia';
+import { useTagSettingsStore } from '@/stores/tagSettings';
 import Quill from 'quill';
 import QuillImageDropAndPaste from 'quill-image-drop-and-paste';
 import 'quill/dist/quill.snow.css';
@@ -131,22 +185,7 @@ watch(
 const title = ref('');
 const deadline = ref('');
 const error = ref('');
-
-// 1部署〜9部署の営業・配電
-const departments = Array.from({ length: 9 }, (_, i) => [
-  { id: `${(i + 1) * 1000 + 1}`, name: `${i + 1}部署（営業）` },
-  { id: `${(i + 1) * 1000 + 2}`, name: `${i + 1}部署（配電）` },
-]).flat();
-
-function getKairanSaki(busho: string | number): string {
-  const num = Number(busho);
-  if (isNaN(num)) return '';
-  return num % 10 === 1 ? String(num + 1) : String(num - 1);
-}
-const kairanSakiId = computed(() => getKairanSaki(currentUser?.value?.busho));
-const kairanSakiName = computed(
-  () => departments.find((d) => d.id === kairanSakiId.value)?.name || ''
-);
+const process = ref(1);
 
 const bodyHtml = ref('');
 
@@ -270,6 +309,30 @@ watch(
   { immediate: true }
 );
 
+const urlInput = ref('');
+const urlLinks = ref<string[]>([]);
+
+function addUrlLink() {
+  const url = urlInput.value.trim();
+  if (!url) return;
+  try {
+    new URL(url);
+  } catch {
+    error.value = '有効なURLを入力してください。';
+    return;
+  }
+  if (urlLinks.value.includes(url)) {
+    error.value = '同じURLは追加できません。';
+    return;
+  }
+  urlLinks.value.push(url);
+  urlInput.value = '';
+  error.value = '';
+}
+function removeUrlLink(idx: number) {
+  urlLinks.value.splice(idx, 1);
+}
+
 const handleSubmit = () => {
   error.value = '';
   if (
@@ -293,93 +356,146 @@ const handleSubmit = () => {
       '未取得',
     createdAt: now.toISOString(),
     deadline: deadline.value,
-    status: 'in_progress',
+    process: process.value,
     department: String(currentUser?.value?.busho),
     recipients: [],
-    files: [],
-    circulationStatus: [
-      {
-        departmentId: kairanSakiId.value,
-        status: 'pending',
-        comment: '',
-      },
-    ],
+    files: urlLinks.value.map((url, i) => ({
+      id: String(i + 1),
+      name: url,
+      url,
+    })),
+    tags: tagSettings.value.filter((t) => selectedTags.value.includes(t.name)),
+    status: 'in_progress',
+    circulationStatus: [],
     updatedBy:
       currentUser?.value?.displayname ||
       currentUser?.value?.username ||
       '未取得',
     updatedAt: now.toISOString(),
-  });
+  } as any);
   alert('回覧箋を作成しました！');
   title.value = '';
   deadline.value = '';
   if (quill) quill.setContents([]);
   bodyHtml.value = '';
+  urlLinks.value = [];
 };
 
-const handleTempSave = () => {
-  error.value = '';
-  if (!title.value) {
-    error.value = 'タイトルは必須です（一時保存）';
-    return;
+const STORAGE_KEY = 'circular_create_draft';
+
+// 入力値をまとめて管理
+const formState = reactive({
+  title,
+  deadline,
+  process,
+  bodyHtml,
+  urlLinks,
+  urlInput,
+});
+
+// 入力値が変わるたびにlocalStorageへ保存
+watch(
+  formState,
+  () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        title: title.value,
+        deadline: deadline.value,
+        process: process.value,
+        bodyHtml: bodyHtml.value,
+        urlLinks: urlLinks.value,
+        urlInput: urlInput.value,
+      })
+    );
+  },
+  { deep: true }
+);
+
+// 初期化時にlocalStorageから復元
+onMounted(() => {
+  // ...既存のonMounted内容の前に追加...
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try {
+      const data = JSON.parse(saved);
+      title.value = data.title || '';
+      deadline.value = data.deadline || '';
+      process.value = data.process || 1;
+      bodyHtml.value = data.bodyHtml || '';
+      urlLinks.value = Array.isArray(data.urlLinks) ? data.urlLinks : [];
+      urlInput.value = data.urlInput || '';
+      if (quill && data.bodyHtml) quill.root.innerHTML = data.bodyHtml;
+    } catch {}
   }
-  // mockCircularsに追加（status: draft）
-  const now = new Date();
-  mockCirculars.push({
-    id: String(mockCirculars.length + 1),
-    title: title.value,
-    content: bodyHtml.value,
-    creator:
-      currentUser?.value?.displayname ||
-      currentUser?.value?.username ||
-      '未取得',
-    createdAt: now.toISOString(),
-    deadline: deadline.value,
-    status: 'draft',
-    department: String(currentUser?.value?.busho),
-    recipients: [],
-    files: [],
-    circulationStatus: [
-      {
-        departmentId: kairanSakiId.value,
-        status: 'pending',
-        comment: '',
-      },
-    ],
-    updatedBy:
-      currentUser?.value?.displayname ||
-      currentUser?.value?.username ||
-      '未取得',
-    updatedAt: now.toISOString(),
-  });
-  alert('一時保存しました！');
+  // ...既存のonMounted内容...
+  watch(
+    () => showEditor.value,
+    (val) => {
+      if (!val) return;
+      setTimeout(() => {
+        const editor = document.querySelector('#editor-container .ql-editor');
+        if (editor) {
+          const setImgClick = () => {
+            const imgs = editor.querySelectorAll('img');
+            imgs.forEach((img) => {
+              img.style.cursor = 'pointer';
+              img.onclick = (e) => {
+                imagePreviewUrl.value = (e.target as HTMLImageElement).src;
+                showImageModal.value = true;
+              };
+            });
+          };
+          setImgClick();
+          // 画像が追加された場合にも再度イベントを設定
+          const observer = new MutationObserver(setImgClick);
+          observer.observe(editor, { childList: true, subtree: true });
+        }
+        // 本文の内容をエディタに反映
+        if (quill && bodyHtml.value) {
+          quill.root.innerHTML = bodyHtml.value;
+        }
+      }, 0);
+    },
+    { immediate: true }
+  );
+  window.addEventListener('scroll', handleScrollGuide);
+});
+
+function handleReset() {
   title.value = '';
   deadline.value = '';
-  if (quill) quill.setContents([]);
+  process.value = 1;
   bodyHtml.value = '';
-  // ファイル情報もリセット
+  urlLinks.value = [];
+  urlInput.value = '';
+  error.value = '';
+  if (quill) quill.setContents([]);
   image.type = '';
   image.dataUrl = null;
   image.blob = null;
   image.file = null;
   blobUrl.value = null;
-};
-
-function handleFileInput(event: Event) {
-  const input = event.target as HTMLInputElement;
-  if (input.files && input.files.length > 0) {
-    const file = input.files[0];
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      imagePreviewUrl.value = e.target?.result as string;
-      showImageModal.value = true;
-    };
-    reader.readAsDataURL(file);
-  }
+  localStorage.removeItem(STORAGE_KEY);
 }
+
 function closeImageModal() {
   showImageModal.value = false;
   imagePreviewUrl.value = null;
+}
+
+const guideText = ref('↓ まだ下に続きがあります');
+function handleScrollGuide() {
+  const scrollGuide = document.getElementById('scroll-guide');
+  if (!scrollGuide) return;
+  const scrollY = window.scrollY || window.pageYOffset;
+  const windowH = window.innerHeight;
+  const docH = document.documentElement.scrollHeight;
+  if (scrollY + windowH >= docH - 2) {
+    guideText.value = '--- 最下部です ---';
+  } else {
+    guideText.value = '↓ まだ下に続きがあります';
+  }
 }
 
 onMounted(() => {
@@ -405,11 +521,37 @@ onMounted(() => {
           const observer = new MutationObserver(setImgClick);
           observer.observe(editor, { childList: true, subtree: true });
         }
+        // 本文の内容をエディタに反映
+        if (quill && bodyHtml.value) {
+          quill.root.innerHTML = bodyHtml.value;
+        }
       }, 0);
     },
     { immediate: true }
   );
+  window.addEventListener('scroll', handleScrollGuide);
 });
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScrollGuide);
+});
+
+// タグ選択用
+const selectedTags = ref<string[]>([]); // nameのみ保持
+function toggleTag(tagName: string) {
+  const idx = selectedTags.value.indexOf(tagName);
+  if (idx === -1) {
+    selectedTags.value.push(tagName);
+  } else {
+    selectedTags.value.splice(idx, 1);
+  }
+}
+function isTagSelected(tagName: string) {
+  return selectedTags.value.includes(tagName);
+}
+
+const tagSettingsStore = useTagSettingsStore();
+const { tagSettings } = storeToRefs(tagSettingsStore);
 </script>
 
 <style scoped>
@@ -420,39 +562,42 @@ onMounted(() => {
   margin-bottom: 1.2rem;
 }
 .circular-create {
-  max-width: 700px;
-  margin: 2rem auto;
+  max-width: 1600px;
+  margin: 0.5rem auto 2rem auto;
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-  padding: 2.5rem 2rem;
+  padding: 1.5rem 2rem 2.5rem 2rem;
 }
 h2 {
-  margin-bottom: 2rem;
-  font-size: 1.7rem;
+  margin-bottom: 1.2rem;
+  font-size: 16pt;
   color: #222;
   font-weight: 700;
 }
 .form-group {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.2rem;
 }
 label {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: 600;
   color: #374151;
+  font-size: 16pt;
 }
 .required {
   color: #e53935;
   margin-left: 0.25em;
+  font-size: 16pt;
 }
 .form-control {
   width: 100%;
   padding: 0.7rem;
   border: 1.5px solid #bdbdbd;
   border-radius: 4px;
-  font-size: 1rem;
+  font-size: 16pt;
   transition: border-color 0.2s;
+  min-width: 120px;
 }
 .form-control:focus {
   border-color: #1976d2;
@@ -585,13 +730,139 @@ label {
 .modal-close:hover {
   background: #005fa3;
 }
+.url-link-input-group {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.btn-add-url {
+  background: #1976d2;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1.2rem;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-add-url:hover {
+  background: #005fa3;
+}
+.url-link-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.url-link-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+.btn-remove-url {
+  background: #e53935;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.2rem 0.8rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-remove-url:hover {
+  background: #b71c1c;
+}
+.quill-editor {
+  font-size: 16pt;
+  background: none;
+}
+@media (max-width: 900px) {
+  .form-2col {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .form-col-left,
+  .form-col-right {
+    max-width: 100%;
+    min-width: 0;
+  }
+}
+.scroll-guide {
+  position: sticky;
+  bottom: 0;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.95);
+  text-align: center;
+  font-size: 1.1em;
+  color: #1976d2;
+  padding: 0.5em 0 0.7em 0;
+  z-index: 10;
+  pointer-events: none;
+  user-select: none;
+  letter-spacing: 0.1em;
+}
+.scroll-fade {
+  position: sticky;
+  bottom: 0;
+  width: 100%;
+  height: 40px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff 80%);
+  pointer-events: none;
+  z-index: 9;
+}
+.process-select-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.process-btn {
+  background: #f5f5f5;
+  color: #1976d2;
+  border: 1.5px solid #bdbdbd;
+  border-radius: 6px;
+  padding: 0.5em 1.2em;
+  font-size: 1em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border 0.2s;
+}
+.process-btn.selected {
+  background: #1976d2;
+  color: #fff;
+  border: 2px solid #1976d2;
+}
+.process-btn:hover {
+  background: #e3f2fd;
+}
+.tag-select-btn-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.tag-select-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 0.4em 1.2em;
+  font-size: 1em;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s, box-shadow 0.2s;
+}
+.tag-select-btn.selected {
+  opacity: 1;
+  box-shadow: 0 0 0 2px #1976d2;
+}
 </style>
 
 <style>
 .ql-editor {
-  min-height: 200px;
+  min-height: 480px;
   background: #fafbfc;
   border-radius: 4px;
+  font-size: 16pt;
 }
 .ql-editor img {
   max-width: 100%;

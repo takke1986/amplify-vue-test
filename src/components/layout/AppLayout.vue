@@ -2,6 +2,7 @@
 import { defineComponent, ref, onMounted, provide, computed } from 'vue';
 import { signOut, getCurrentUser, fetchAuthSession } from 'aws-amplify/auth';
 import { useRouter } from 'vue-router';
+import { departments } from '@/mocks/departments';
 
 type JsonObject = { [key: string]: any };
 type JsonArray = any[];
@@ -25,11 +26,18 @@ export default defineComponent({
     const currentUser = ref<{
       displayname: string;
       busho: string | number | boolean | JsonObject | JsonArray;
+      role?: string;
     } | null>(null);
     const router = useRouter();
     const bushoName = computed(() =>
       currentUser.value ? getBushoName(currentUser.value.busho) : ''
     );
+    const isAdmin = computed(() => {
+      if (!currentUser.value) return false;
+      const userBusho = String(currentUser.value.busho ?? '');
+      const dept = departments.find((d) => String(d.code) === userBusho);
+      return dept && dept.role === '管理者';
+    });
 
     const handleSignOut = async () => {
       if (isSigningOut.value) return;
@@ -86,8 +94,10 @@ export default defineComponent({
           session.tokens?.idToken?.payload?.['custom:displayname'] ||
           user.username ||
           '未設定';
+        const role = session.tokens?.idToken?.payload?.['custom:role'] || '';
         console.log('取得した部署:', busho);
         console.log('取得したdisplayname:', displayname);
+        console.log('取得したrole:', role);
 
         // 許可部署以外は即サインアウト
         if (!isAllowedBusho(String(busho))) {
@@ -99,6 +109,7 @@ export default defineComponent({
         currentUser.value = {
           displayname: String(displayname),
           busho: busho as string | number | boolean | JsonObject | JsonArray,
+          role: String(role),
         };
         console.log('設定後のcurrentUser:', currentUser.value);
       } catch (error) {
@@ -115,6 +126,7 @@ export default defineComponent({
 
     // currentUserをprovideで子コンポーネントに渡す
     provide('currentUser', currentUser);
+    provide('isAdmin', isAdmin);
 
     return {
       handleSignOut,
@@ -122,6 +134,7 @@ export default defineComponent({
       errorMessage,
       currentUser,
       bushoName,
+      isAdmin,
     };
   },
 });
@@ -146,17 +159,26 @@ export default defineComponent({
       <aside class="sidebar">
         <nav>
           <router-link to="/" class="nav-item" exact>ホーム</router-link>
+          <router-link to="/circulars/todo" class="nav-item"
+            >工程変更通知</router-link
+          >
           <router-link to="/circulars" class="nav-item">回覧箋一覧</router-link>
           <router-link to="/circulars/create" class="nav-item"
             >新規作成</router-link
+          >
+          <router-link to="/tag-settings" class="nav-item"
+            >タグ設定</router-link
+          >
+          <router-link v-if="isAdmin" to="/circulars/settings" class="nav-item"
+            >設定</router-link
           >
         </nav>
       </aside>
 
       <main class="content">
-        <div class="notification-container">
+        <!-- <div class="notification-container">
           <NotificationList />
-        </div>
+        </div> -->
         <div class="content-wrapper">
           <div class="content-body">
             <router-view></router-view>

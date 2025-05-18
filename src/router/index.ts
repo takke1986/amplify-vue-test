@@ -6,6 +6,9 @@ import CircularListView from '@/views/CircularListView.vue';
 import CircularDetail from '@/views/CircularDetail.vue';
 import AppLayout from '@/components/layout/AppLayout.vue';
 import CircularCreateView from '@/views/CircularCreateView.vue';
+import SettingsView from '@/views/SettingsView.vue';
+import TodoView from '@/views/TodoView.vue';
+import TagSettingsView from '@/views/TagSettingsView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -35,6 +38,21 @@ const router = createRouter({
           name: 'circular-detail',
           component: CircularDetail,
         },
+        {
+          path: 'circulars/settings',
+          name: 'settings',
+          component: SettingsView,
+        },
+        {
+          path: 'circulars/todo',
+          name: 'todo',
+          component: TodoView,
+        },
+        {
+          path: 'tag-settings',
+          name: 'tag-settings',
+          component: TagSettingsView,
+        },
       ],
     },
     {
@@ -42,18 +60,6 @@ const router = createRouter({
       name: 'login',
       component: Login,
       meta: { requiresAuth: false },
-    },
-    {
-      path: '/create',
-      name: 'create',
-      component: () => import('@/views/CircularCreateView.vue'),
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/settings',
-      name: 'settings',
-      component: () => import('@/views/SettingsView.vue'),
-      meta: { requiresAuth: true },
     },
   ],
 });
