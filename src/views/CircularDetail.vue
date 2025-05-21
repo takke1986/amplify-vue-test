@@ -161,7 +161,7 @@
               <template v-if="circular.tags && circular.tags.length > 0">
                 <span
                   v-for="tag in circular.tags"
-                  :key="tag.name"
+                  :key="tag.id"
                   :style="{
                     background: tag.color,
                     color: '#fff',
@@ -199,13 +199,17 @@
           <h3>URLリンク</h3>
           <ul class="url-link-list">
             <li v-for="file in circular.files" :key="file.id">
-              <a
-                :href="file.url"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="file-link"
-                >{{ file.url }}</a
+              <span>{{ file.name || file.url }}</span>
+              <a :href="file.url" target="_blank" rel="noopener noreferrer">{{
+                file.url
+              }}</a>
+              <button
+                type="button"
+                class="btn-copy-url"
+                @click="copyToClipboard(file.url)"
               >
+                コピー
+              </button>
             </li>
           </ul>
         </div>
@@ -303,8 +307,8 @@
               <label>タグ</label>
               <div class="tag-select-btn-list">
                 <button
-                  v-for="tag in tagSettings"
-                  :key="tag.name"
+                  v-for="tag in validTags"
+                  :key="tag.id"
                   type="button"
                   :class="[
                     'tag-select-btn',
@@ -324,25 +328,37 @@
               </div>
             </div>
             <div class="form-group">
-              <label>本文<span class="required">*</span></label>
-              <div id="editor-container" class="quill-editor"></div>
+              <label for="edit-content"
+                >本文<span class="required">*</span></label
+              >
+              <div id="editor-container"></div>
             </div>
             <div class="form-group">
               <label>URLリンク</label>
               <div class="url-link-input-group">
                 <input
-                  id="url-link"
-                  v-model="urlInput"
+                  v-model="editUrlNameInput"
+                  type="text"
+                  class="form-control"
+                  placeholder="リンク名称"
+                />
+                <input
+                  v-model="editUrlInput"
                   type="url"
                   class="form-control"
                   placeholder="https://example.com/"
                 />
-                <button type="button" class="btn-add-url" @click="addUrlLink">
+                <button
+                  type="button"
+                  class="btn-add-url"
+                  @click="addEditUrlLink"
+                >
                   追加
                 </button>
               </div>
               <ul class="url-link-list">
                 <li v-for="(file, idx) in editForm.files" :key="file.id">
+                  <span>{{ file.name || file.url }}</span>
                   <a
                     :href="file.url"
                     target="_blank"
@@ -409,15 +425,14 @@ import {
   onUpdated,
 } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import {
-  circulars as mockCirculars,
-  processNames,
-} from '@/mocks/mockCirculars';
+import { processNames } from '@/mocks/mockCirculars';
 import Quill from 'quill';
 import QuillImageDropAndPaste from 'quill-image-drop-and-paste';
 import 'quill/dist/quill.snow.css';
 import { storeToRefs } from 'pinia';
 import { useTagSettingsStore } from '@/stores/tagSettings';
+import { generateClient } from 'aws-amplify/data';
+import type { Schema } from '../../amplify/data/resource';
 
 // プラグイン登録
 Quill.register('modules/imageDropAndPaste', QuillImageDropAndPaste);
@@ -435,6 +450,7 @@ interface CirculationStatus {
 }
 
 interface Tag {
+  id: string;
   name: string;
   color: string;
 }
@@ -487,9 +503,6 @@ let quill: any = null;
 
 const currentUser = inject('currentUser') as any;
 
-// URLリンク入力用
-const urlInput = ref('');
-
 function getKairanSaki(busho: string | number | undefined): string {
   if (busho === undefined) return '';
   const num = Number(busho);
@@ -524,18 +537,298 @@ const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString('ja-JP');
 };
 
+const client = generateClient<Schema>();
+
+// IndexedDBの設定
+const DB_NAME = 'circular_cache_db';
+const DB_VERSION = 1;
+const CIRCULAR_STORE = 'circulars';
+const TAGS_STORE = 'tags';
+const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24時間
+
+// IndexedDBの初期化
+const initDB = () => {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onerror = () => {
+      console.error('IndexedDBの初期化に失敗しました');
+      reject(request.error);
+    };
+
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+
+    request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(CIRCULAR_STORE)) {
+        db.createObjectStore(CIRCULAR_STORE, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(TAGS_STORE)) {
+        db.createObjectStore(TAGS_STORE, { keyPath: 'id' });
+      }
+    };
+  });
+};
+
+// キャッシュからデータを取得
+const getFromCache = async (storeName: string, id: string) => {
+  try {
+    const db = await initDB();
+    return new Promise<any>((resolve, reject) => {
+      const transaction = db.transaction(storeName, 'readonly');
+      const store = transaction.objectStore(storeName);
+      const request = store.get(id);
+
+      request.onsuccess = () => {
+        const data = request.result;
+        if (data && Date.now() - data.timestamp < CACHE_EXPIRY) {
+          resolve(data.data);
+        } else {
+          // 有効期限切れのデータを削除
+          const deleteTransaction = db.transaction(storeName, 'readwrite');
+          const deleteStore = deleteTransaction.objectStore(storeName);
+          deleteStore.delete(id);
+          resolve(null);
+        }
+      };
+
+      request.onerror = () => {
+        reject(request.error);
+      };
+
+      transaction.oncomplete = () => {
+        db.close();
+      };
+    });
+  } catch (error) {
+    console.error('キャッシュの取得に失敗しました:', error);
+    return null;
+  }
+};
+
+// データをキャッシュに保存
+const saveToCache = async (storeName: string, id: string, data: any) => {
+  try {
+    const db = await initDB();
+    return new Promise<boolean>((resolve, reject) => {
+      const transaction = db.transaction(storeName, 'readwrite');
+      const store = transaction.objectStore(storeName);
+      const request = store.put({
+        id,
+        data,
+        timestamp: Date.now(),
+      });
+
+      request.onsuccess = () => {
+        resolve(true);
+      };
+
+      request.onerror = () => {
+        reject(request.error);
+      };
+
+      transaction.oncomplete = () => {
+        db.close();
+      };
+    });
+  } catch (error) {
+    console.error('キャッシュの保存に失敗しました:', error);
+    return false;
+  }
+};
+
+// キャッシュをクリア
+const clearCache = async (id: string) => {
+  try {
+    const db = await initDB();
+    const transaction = db.transaction(
+      [CIRCULAR_STORE, TAGS_STORE],
+      'readwrite'
+    );
+    const circularStore = transaction.objectStore(CIRCULAR_STORE);
+    const tagsStore = transaction.objectStore(TAGS_STORE);
+
+    circularStore.delete(id);
+    tagsStore.delete(id);
+
+    return new Promise<boolean>((resolve) => {
+      transaction.oncomplete = () => {
+        db.close();
+        resolve(true);
+      };
+    });
+  } catch (error) {
+    console.error('キャッシュのクリアに失敗しました:', error);
+    return false;
+  }
+};
+
 const fetchCircular = async () => {
   try {
     isLoading.value = true;
     const id = route.params.id as string;
-    const found = mockCirculars.find((c) => c.id === id);
-    if (found) {
-      circular.value = { ...found };
-    } else {
+
+    // キャッシュから回覧箋データを取得
+    const cachedCircular = await getFromCache(CIRCULAR_STORE, id);
+    if (cachedCircular) {
+      circular.value = cachedCircular as Circular;
+      isLoading.value = false;
+      return;
+    }
+
+    const { data, errors } = await client.models.Circular.get({
+      id,
+      selectionSet: [
+        'id',
+        'title',
+        'content',
+        'creator',
+        'createdAt',
+        'deadline',
+        'status',
+        'department',
+        'updatedBy',
+        'updatedAt',
+        'process',
+        'history',
+        'circulationStatus',
+        'fileLinks',
+        { circularTags: [{ tag: ['id', 'name', 'color'] }] },
+      ] as any,
+    });
+
+    if (errors) {
+      console.error('回覧箋の取得エラー:', errors);
       circular.value = null;
+      return;
+    }
+
+    if (!data) {
+      console.error('回覧箋のデータが存在しません');
+      circular.value = null;
+      return;
+    }
+
+    // タグ情報を取得
+    try {
+      // キャッシュからタグ情報を取得
+      const cachedTags = await getFromCache(TAGS_STORE, id);
+      let tags: Tag[] = [];
+
+      if (cachedTags) {
+        tags = cachedTags;
+      } else {
+        const { data: circularTags } = await client.models.CircularTag.list({
+          filter: {
+            circularId: { eq: id },
+          },
+        });
+
+        if (Array.isArray(circularTags)) {
+          for (const ct of circularTags) {
+            if (ct.tagId) {
+              const { data: tagData } = await client.models.Tag.get({
+                id: ct.tagId,
+              });
+              if (tagData) {
+                tags.push({
+                  id: tagData.id,
+                  name: tagData.name,
+                  color: tagData.color,
+                });
+              }
+            }
+          }
+        }
+        // タグ情報をキャッシュに保存
+        await saveToCache(TAGS_STORE, id, tags);
+      }
+
+      // fileLinks(JSON文字列)を配列に
+      let files: File[] = [];
+      try {
+        files = data.fileLinks ? JSON.parse(data.fileLinks) : [];
+      } catch {
+        files = [];
+      }
+      // history(JSON文字列)を配列に
+      let history: HistoryItem[] = [];
+      try {
+        history = data.history ? JSON.parse(data.history) : [];
+      } catch {
+        history = [];
+      }
+      // circulationStatus(JSON文字列)を配列に
+      let circulationStatus: CirculationStatus[] = [];
+      try {
+        circulationStatus = data.circulationStatus
+          ? JSON.parse(data.circulationStatus)
+          : [];
+      } catch {
+        circulationStatus = [];
+      }
+
+      const circularData: Circular = {
+        id: String(data.id),
+        title: String(data.title),
+        content: String(data.content),
+        creator: String(data.creator),
+        createdAt: String(data.createdAt),
+        deadline: String(data.deadline),
+        status: data.status as
+          | 'draft'
+          | 'in_progress'
+          | 'completed'
+          | 'expired',
+        department: String(data.department),
+        updatedBy: String(data.updatedBy),
+        updatedAt: String(data.updatedAt),
+        process: Number(data.process),
+        tags,
+        files,
+        history,
+        circulationStatus,
+      };
+
+      // 回覧箋データをキャッシュに保存
+      await saveToCache(CIRCULAR_STORE, id, circularData);
+      circular.value = circularData;
+    } catch (tagError) {
+      console.error('タグ情報の取得に失敗しました:', tagError);
+      // タグ情報の取得に失敗しても、他の情報は表示する
+      const circularData: Circular = {
+        id: String(data.id),
+        title: String(data.title),
+        content: String(data.content),
+        creator: String(data.creator),
+        createdAt: String(data.createdAt),
+        deadline: String(data.deadline),
+        status: data.status as
+          | 'draft'
+          | 'in_progress'
+          | 'completed'
+          | 'expired',
+        department: String(data.department),
+        updatedBy: String(data.updatedBy),
+        updatedAt: String(data.updatedAt),
+        process: Number(data.process),
+        tags: [],
+        files: data.fileLinks ? JSON.parse(data.fileLinks) : [],
+        history: data.history ? JSON.parse(data.history) : [],
+        circulationStatus: data.circulationStatus
+          ? JSON.parse(data.circulationStatus)
+          : [],
+      };
+
+      // 回覧箋データをキャッシュに保存
+      await saveToCache(CIRCULAR_STORE, id, circularData);
+      circular.value = circularData;
     }
   } catch (error) {
     console.error('回覧箋の取得に失敗しました:', error);
+    circular.value = null;
   } finally {
     isLoading.value = false;
   }
@@ -545,21 +838,47 @@ const handleEdit = () => {
   enterEditMode();
 };
 
-const handleDelete = () => {
+// 削除時のキャッシュクリア
+const deleteCircularFromCache = async (id: string) => {
+  try {
+    // 回覧箋データとタグ情報のキャッシュを削除
+    await clearCache(id);
+    return true;
+  } catch (error) {
+    console.error('回覧箋のキャッシュ削除に失敗しました:', error);
+    return false;
+  }
+};
+
+const handleDelete = async () => {
   if (
     !circular.value ||
     !window.confirm('この回覧箋を削除してもよろしいですか？')
-  )
+  ) {
     return;
-
-  // モックデータから削除
-  const idx = mockCirculars.findIndex((c) => c.id === circular.value!.id);
-  if (idx !== -1) {
-    mockCirculars.splice(idx, 1);
   }
 
-  // 一覧に戻る
-  router.push('/circulars');
+  try {
+    // APIで削除
+    const { errors } = await client.models.Circular.delete({
+      id: circular.value.id,
+    });
+
+    if (errors) {
+      console.error('回覧箋の削除に失敗しました:', errors);
+      alert('回覧箋の削除に失敗しました。');
+      return;
+    }
+
+    // キャッシュからも削除
+    await deleteCircularFromCache(circular.value.id);
+
+    // 一覧に戻る
+    router.push('/circulars');
+  } catch (error) {
+    console.error('回覧箋の削除に失敗しました:', error);
+    alert('回覧箋の削除に失敗しました。');
+  }
 };
 
 const handleSubmitComment = async () => {
@@ -588,20 +907,42 @@ const handleBack = () => {
   router.push('/circulars');
 };
 
+// 編集モードに入る前の状態を保存
+const originalState = ref<any>(null);
+
 const enterEditMode = async () => {
   if (!circular.value) return;
+
+  // 現在の状態を保存
+  originalState.value = {
+    title: circular.value.title,
+    content: circular.value.content,
+    deadline: circular.value.deadline,
+    files: circular.value.files ? [...circular.value.files] : [],
+    tags: circular.value.tags ? [...circular.value.tags] : [],
+    process: circular.value.process || 1,
+    departments: circular.value.circulationStatus.map((cs) => cs.departmentId),
+  };
+
   isEditMode.value = true;
   // 編集用フォームに値をコピー
   editForm.value.title = circular.value.title;
   editForm.value.content = circular.value.content;
   editForm.value.deadline = circular.value.deadline;
   editForm.value.files = circular.value.files ? [...circular.value.files] : [];
-  editForm.value.tags = circular.value.tags ? [...circular.value.tags] : [];
+  // タグの初期化を修正
+  editForm.value.tags = circular.value.tags
+    ? circular.value.tags.map((tag) => ({
+        id: tag.id,
+        name: tag.name,
+        color: tag.color,
+      }))
+    : [];
   editForm.value.process = circular.value.process || 1;
-  // 回覧先（仮：全ての部署IDを取得）
   editForm.value.departments = circular.value.circulationStatus.map(
     (cs) => cs.departmentId
   );
+
   await nextTick();
   quill = new Quill('#editor-container', {
     modules: {
@@ -634,7 +975,46 @@ const enterEditMode = async () => {
 
 const editError = ref('');
 
-const handleEditSubmit = () => {
+// 新規作成時のキャッシュ保存
+const saveNewCircularToCache = async (circularData: Circular) => {
+  try {
+    // 回覧箋データをキャッシュに保存
+    await saveToCache(CIRCULAR_STORE, circularData.id, circularData);
+
+    // タグ情報をキャッシュに保存
+    if (circularData.tags && circularData.tags.length > 0) {
+      await saveToCache(TAGS_STORE, circularData.id, circularData.tags);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('新規回覧箋のキャッシュ保存に失敗しました:', error);
+    return false;
+  }
+};
+
+// 更新時のキャッシュ保存
+const updateCircularInCache = async (circularData: Circular) => {
+  try {
+    // 既存のキャッシュをクリア
+    await clearCache(circularData.id);
+
+    // 新しいデータをキャッシュに保存
+    await saveToCache(CIRCULAR_STORE, circularData.id, circularData);
+
+    // タグ情報をキャッシュに保存
+    if (circularData.tags && circularData.tags.length > 0) {
+      await saveToCache(TAGS_STORE, circularData.id, circularData.tags);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('回覧箋のキャッシュ更新に失敗しました:', error);
+    return false;
+  }
+};
+
+const handleEditSubmit = async () => {
   editError.value = '';
   if (
     !editForm.value.title ||
@@ -646,101 +1026,255 @@ const handleEditSubmit = () => {
     return;
   }
   if (!circular.value) return;
-  const prevProcess = circular.value.process;
-  circular.value.title = editForm.value.title;
-  circular.value.content = editForm.value.content;
-  circular.value.deadline = editForm.value.deadline;
-  circular.value.tags = [...(editForm.value.tags || [])];
-  circular.value.process = editForm.value.process || 1;
-  // 履歴追加
-  if (!circular.value.history) circular.value.history = [];
-  let comment = editForm.value.editComment || '';
-  if (prevProcess !== editForm.value.process) {
-    const from = processNames[prevProcess];
-    const to = processNames[editForm.value.process];
-    comment = `工程を${from}→${to}に変更` + (comment ? `／${comment}` : '');
+
+  try {
+    const prevProcess = circular.value.process;
+    const updateData = {
+      id: circular.value.id,
+      title: editForm.value.title,
+      content: editForm.value.content,
+      deadline: editForm.value.deadline,
+      process: editForm.value.process,
+      editComment: editForm.value.editComment,
+      updatedBy:
+        currentUser?.value?.displayname ||
+        currentUser?.value?.username ||
+        '未取得',
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 履歴追加
+    let history = circular.value.history || [];
+    let comment = editForm.value.editComment || '';
+    if (prevProcess !== editForm.value.process) {
+      const from = processNames[prevProcess];
+      const to = processNames[editForm.value.process];
+      comment = `工程を${from}→${to}に変更` + (comment ? `／${comment}` : '');
+    }
+    history.push({
+      date: new Date().toISOString(),
+      user:
+        currentUser?.value?.displayname ||
+        currentUser?.value?.username ||
+        '未取得',
+      action: '編集',
+      comment,
+    });
+
+    // 回覧先（自動決定）を反映
+    const circulationStatus = [
+      {
+        departmentId: kairanSakiId.value,
+        status: 'pending',
+        comment: '',
+      },
+    ];
+
+    const { errors } = await client.models.Circular.update({
+      id: updateData.id,
+      title: updateData.title,
+      content: updateData.content,
+      deadline: updateData.deadline,
+      process: updateData.process,
+      updatedBy: updateData.updatedBy,
+      updatedAt: updateData.updatedAt,
+      history: JSON.stringify(history),
+      circulationStatus: JSON.stringify(circulationStatus),
+    });
+
+    if (errors) {
+      console.error('回覧箋の更新に失敗しました:', errors);
+      editError.value = '回覧箋の更新に失敗しました。';
+      return;
+    }
+
+    // タグの更新
+    // 1. 既存のCircularTagを取得
+    const { data: existingCircularTags } = await client.models.CircularTag.list(
+      {
+        filter: {
+          circularId: { eq: circular.value.id },
+        },
+      }
+    );
+
+    // 2. 既存のタグを削除
+    if (existingCircularTags) {
+      for (const circularTag of existingCircularTags) {
+        await client.models.CircularTag.delete({ id: circularTag.id });
+      }
+    }
+
+    // 3. 新しいタグを作成
+    if (editForm.value.tags && editForm.value.tags.length > 0) {
+      for (const tag of editForm.value.tags) {
+        const tagData = tagSettings.value.find((t) => t.name === tag.name);
+        if (tagData) {
+          await client.models.CircularTag.create({
+            circularId: circular.value.id,
+            tagId: tagData.id,
+          });
+        }
+      }
+    }
+
+    // 更新されたデータをキャッシュに保存
+    const updatedCircularData: Circular = {
+      ...circular.value,
+      title: updateData.title,
+      content: updateData.content,
+      deadline: updateData.deadline,
+      process: updateData.process,
+      updatedBy: updateData.updatedBy,
+      updatedAt: updateData.updatedAt,
+      history,
+      circulationStatus,
+      tags: editForm.value.tags || [],
+    };
+
+    await updateCircularInCache(updatedCircularData);
+
+    // 更新成功後、回覧箋の情報を再取得
+    await fetchCircular();
+    isEditMode.value = false;
+  } catch (error) {
+    console.error('回覧箋の更新に失敗しました:', error);
+    editError.value = '回覧箋の更新に失敗しました。';
   }
-  circular.value.history.push({
-    date: new Date().toISOString(),
-    user:
-      currentUser?.value?.displayname ||
-      currentUser?.value?.username ||
-      '未取得',
-    action: '編集',
-    comment,
-  });
-  editForm.value.editComment = '';
-  // 回覧先（自動決定）を反映
-  circular.value.circulationStatus = [
-    {
-      departmentId: kairanSakiId.value,
-      status: 'pending',
-      comment: '',
-    },
-  ];
-  // 更新者・更新日を反映
-  const now = new Date();
-  circular.value.updatedBy =
-    currentUser?.value?.displayname || currentUser?.value?.username || '未取得';
-  circular.value.updatedAt = now.toISOString();
-  // mockCircularsも更新
-  const idx = mockCirculars.findIndex((c) => c.id === circular.value!.id);
-  if (idx !== -1) {
-    mockCirculars[idx] = { ...mockCirculars[idx], ...circular.value };
+};
+
+// 新規作成時の処理
+const handleCreate = async (circularData: Circular) => {
+  try {
+    // APIで新規作成
+    const { data, errors } = await client.models.Circular.create({
+      title: circularData.title,
+      content: circularData.content,
+      deadline: circularData.deadline,
+      process: circularData.process,
+      creator:
+        currentUser?.value?.displayname ||
+        currentUser?.value?.username ||
+        '未取得',
+      createdAt: new Date().toISOString(),
+      updatedBy:
+        currentUser?.value?.displayname ||
+        currentUser?.value?.username ||
+        '未取得',
+      updatedAt: new Date().toISOString(),
+      department: circularData.department,
+      status: 'draft',
+      history: JSON.stringify([
+        {
+          date: new Date().toISOString(),
+          user:
+            currentUser?.value?.displayname ||
+            currentUser?.value?.username ||
+            '未取得',
+          action: '作成',
+          comment: '',
+        },
+      ]),
+      circulationStatus: JSON.stringify([
+        {
+          departmentId: kairanSakiId.value,
+          status: 'pending',
+          comment: '',
+        },
+      ]),
+    });
+
+    if (errors) {
+      console.error('回覧箋の作成に失敗しました:', errors);
+      return null;
+    }
+
+    if (!data) {
+      console.error('回覧箋の作成に失敗しました: データが返されませんでした');
+      return null;
+    }
+
+    // 作成されたデータをキャッシュに保存
+    const newCircularData: Circular = {
+      ...circularData,
+      id: data.id,
+      createdAt: data.createdAt,
+      updatedAt: data.updatedAt,
+    };
+
+    await saveNewCircularToCache(newCircularData);
+
+    return newCircularData;
+  } catch (error) {
+    console.error('回覧箋の作成に失敗しました:', error);
+    return null;
   }
-  isEditMode.value = false;
 };
 
 const cancelEdit = () => {
-  isEditMode.value = false;
-};
+  // Quillエディタのクリーンアップ
+  if (quill) {
+    const editor = document.querySelector('#editor-container');
+    if (editor) {
+      editor.innerHTML = '';
+    }
+    quill = null;
+  }
 
-// リンクを追加
-function addUrlLink() {
-  const url = urlInput.value.trim();
-  if (!url) return;
-  try {
-    new URL(url);
-  } catch {
-    editError.value = '有効なURLを入力してください。';
-    return;
-  }
-  if (editForm.value.files.some((file) => file.url === url)) {
-    editError.value = '同じURLは追加できません。';
-    return;
-  }
-  editForm.value.files.push({
-    id: Date.now().toString(),
-    name: url,
-    url: url,
-  });
-  urlInput.value = '';
+  // 編集フォームの状態をリセット
+  editForm.value = {
+    title: '',
+    content: '',
+    deadline: '',
+    files: [],
+    departments: [],
+    selectedDepartment: '',
+    tags: [],
+    editComment: '',
+    process: 1,
+  };
+
+  // URL入力欄をリセット
+  editUrlNameInput.value = '';
+  editUrlInput.value = '';
+
+  // エラーメッセージをクリア
   editError.value = '';
-}
 
-// リンクを削除
-function removeUrlLink(index: number) {
-  editForm.value.files.splice(index, 1);
-}
+  // 編集モードを終了
+  isEditMode.value = false;
+
+  // 回覧箋の情報を再取得
+  fetchCircular();
+};
 
 // タグ選択用
 function toggleTag(tagName: string) {
   if (!editForm.value.tags) editForm.value.tags = [];
   const tag = tagSettings.value.find((t) => t.name === tagName);
-  if (tag) {
+  if (tag && tag.name) {
+    // タグ名が存在する場合のみ処理
     const idx = editForm.value.tags.findIndex((t) => t.name === tagName);
     if (idx === -1) {
-      editForm.value.tags.push({ name: tag.name, color: tag.color });
+      editForm.value.tags.push({
+        id: tag.id,
+        name: tag.name,
+        color: tag.color,
+      });
     } else {
       editForm.value.tags.splice(idx, 1);
     }
   }
 }
+
 function isTagSelected(tagName: string) {
-  return (
-    !!editForm.value.tags && editForm.value.tags.some((t) => t.name === tagName)
-  );
+  return editForm.value.tags?.some((t) => t.name === tagName) || false;
 }
+
+// 有効なタグのみをフィルタリング
+const validTags = computed(() => {
+  return tagSettings.value.filter((tag) => tag.name && tag.name.trim() !== '');
+});
 
 // 履歴コメントの工程部分をバッジ化
 function formatHistoryComment(comment: string): string {
@@ -828,6 +1362,51 @@ onUpdated(() => {
 
 const tagSettingsStore = useTagSettingsStore();
 const { tagSettings } = storeToRefs(tagSettingsStore);
+
+// 編集画面のURLリンク入力欄を修正
+const editUrlNameInput = ref('');
+const editUrlInput = ref('');
+function addEditUrlLink() {
+  const name = editUrlNameInput.value.trim();
+  const url = editUrlInput.value.trim();
+  if (!url) return;
+  try {
+    new URL(url);
+  } catch {
+    editError.value = '有効なURLを入力してください。';
+    return;
+  }
+  if (editForm.value.files.some((file) => file.url === url)) {
+    editError.value = '同じURLは追加できません。';
+    return;
+  }
+  editForm.value.files.push({
+    id: Date.now().toString(),
+    name: name || url,
+    url,
+  });
+  editUrlNameInput.value = '';
+  editUrlInput.value = '';
+  editError.value = '';
+}
+function copyToClipboard(url: string) {
+  navigator.clipboard.writeText(url).then(() => {
+    alert('リンクをコピーしました');
+  });
+}
+function removeUrlLink(idx: number) {
+  if (Array.isArray(editForm.value.files)) {
+    editForm.value.files.splice(idx, 1);
+  }
+}
+
+// タグの初期化
+onMounted(async () => {
+  await tagSettingsStore.fetchTags();
+  await fetchCircular();
+  window.addEventListener('scroll', handleScrollGuide);
+  bindImageClickEvent();
+});
 </script>
 
 <style scoped>
@@ -1272,6 +1851,9 @@ label,
   border: 1.5px solid #e0e0e0;
   box-sizing: border-box;
 }
+#editor-container {
+  margin-bottom: 1rem;
+}
 </style>
 
 <style scoped>
@@ -1465,6 +2047,7 @@ label,
 }
 .btn-complete:hover {
   background: #1b5e20;
+  box-shadow: 0 4px 16px rgba(46, 125, 50, 0.15);
 }
 </style>
 

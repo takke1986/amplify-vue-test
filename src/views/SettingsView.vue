@@ -27,36 +27,28 @@
             <tr>
               <th>部署コード</th>
               <th>部署名</th>
-              <th>所属</th>
               <th>ロール</th>
               <th>編集</th>
               <th>削除</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="dept in departments" :key="dept.id">
+            <tr v-for="dept in localPermissions" :key="dept.departmentId">
               <td>
                 <input
                   type="text"
-                  v-model="dept.code"
+                  v-model="dept.departmentId"
                   :disabled="!isAdmin || !dept.isEditing"
-                  @input="handleCodeInput(dept)"
                   placeholder="例: 12345"
                 />
               </td>
               <td>
                 <input
                   type="text"
-                  v-model="dept.name"
-                  disabled
+                  v-model="dept.departmentName"
+                  :disabled="!isAdmin || !dept.isEditing"
                   placeholder="例: 営業部"
                 />
-              </td>
-              <td>
-                <select v-model="dept.affiliation" disabled>
-                  <option value="営業">営業</option>
-                  <option value="配電">配電</option>
-                </select>
               </td>
               <td>
                 <select
@@ -80,7 +72,10 @@
                 </button>
               </td>
               <td>
-                <button :disabled="!isAdmin" @click="removeDepartment(dept.id)">
+                <button
+                  :disabled="!isAdmin"
+                  @click="removeDepartment(dept.departmentId)"
+                >
                   削除
                 </button>
               </td>
@@ -96,22 +91,21 @@
             <tr>
               <th>部署コード</th>
               <th>部署名</th>
-              <th>所属</th>
               <th>通知先メールアドレス（カンマ区切り可）</th>
               <th>編集</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="dept in departments" :key="dept.id">
-              <td>{{ dept.code }}</td>
-              <td>{{ dept.name }}</td>
-              <td>{{ dept.affiliation }}</td>
+            <tr v-for="dept in localPermissions" :key="dept.departmentId">
+              <td>{{ dept.departmentId }}</td>
+              <td>{{ dept.departmentName }}</td>
               <td>
                 <input
                   type="text"
-                  v-model="dept.emails"
+                  :value="dept.notificationEmails.join(',')"
                   :disabled="!isAdmin || !dept.isEditing"
                   placeholder="例: aaa@ex.com,bbb@ex.com"
+                  @input="onEmailsInput($event, dept)"
                 />
               </td>
               <td>
@@ -147,51 +141,165 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, inject, computed } from 'vue';
-import { departments as departmentsMaster } from '@/mocks/departments';
+import { ref, inject, computed, watch, onMounted } from 'vue';
+import {
+  usePermissionStore,
+  DepartmentPermission as BaseDepartmentPermission,
+} from '@/stores/permission';
+import { storeToRefs } from 'pinia';
+import { generateClient } from 'aws-amplify/data';
+import type { Schema } from '../../amplify/data/resource';
+
+// isEditingを拡張した型
+interface Department {
+  id?: string;
+  departmentId: string;
+  departmentCode: string;
+  departmentName: string;
+  affiliationCode: string;
+  affiliationName: string;
+  role: string;
+  notificationEmails: string[];
+  isEditing?: boolean;
+}
+
+const client = generateClient<Schema>();
 
 const currentUser = inject('currentUser', ref<any>(null));
-const departments = ref([...departmentsMaster]);
+const permissionStore = usePermissionStore();
+const { permissions } = storeToRefs(permissionStore);
+
+// DBから部署権限一覧を取得
+async function fetchPermissions() {
+  const { data, errors } = await client.models.Department.list({
+    limit: 1000,
+  });
+  if (!errors && data) {
+    permissionStore.setPermissions(data);
+  }
+}
+
+// 編集用のローカルコピーを作成
+const localPermissions = ref<Department[]>(
+  permissions.value.map((p) => ({
+    id: p.id,
+    departmentId: p.departmentId ?? '',
+    departmentCode: p.departmentCode ?? '',
+    departmentName: p.departmentName ?? '',
+    affiliationCode: p.affiliationCode ?? '',
+    affiliationName: p.affiliationName ?? '',
+    role: p.role ?? '',
+    notificationEmails: p.notificationEmails ?? [],
+    isEditing: false,
+  }))
+);
+
+// permissionsが更新されたらlocalPermissionsも同期
+watch(
+  permissions,
+  (newVal) => {
+    localPermissions.value = newVal.map((p) => ({
+      id: p.id,
+      departmentId: p.departmentId ?? '',
+      departmentCode: p.departmentCode ?? '',
+      departmentName: p.departmentName ?? '',
+      affiliationCode: p.affiliationCode ?? '',
+      affiliationName: p.affiliationName ?? '',
+      role: p.role ?? '',
+      notificationEmails: p.notificationEmails ?? [],
+      isEditing: false,
+    }));
+  },
+  { deep: true }
+);
+
+onMounted(async () => {
+  await fetchPermissions();
+  // 2001管理者がなければ自動追加
+  const exists = localPermissions.value.some(
+    (d) => d.departmentId === '2001' && d.role === '管理者'
+  );
+  if (!exists) {
+    if (client.models.Department) {
+      await client.models.Department.create({
+        departmentId: '2001',
+        departmentCode: '2001',
+        departmentName: '管理部',
+        affiliationCode: '',
+        affiliationName: '',
+        role: '管理者',
+        notificationEmails: [],
+      });
+      await fetchPermissions();
+    }
+  }
+});
+
 const isAdmin = computed(() => {
   if (!currentUser.value) return false;
   const userBusho = String(currentUser.value.busho ?? '');
-  const dept = departments.value.find((d) => String(d.code) === userBusho);
+  const dept = localPermissions.value.find(
+    (d) => String(d.departmentId) === userBusho
+  );
   return dept && dept.role === '管理者';
 });
 
 const activeTab = ref<'auth' | 'notify'>('auth');
 
-function handleEdit(dept: any) {
-  if (!isAdmin) return;
+function handleEdit(dept: Department) {
+  if (!isAdmin.value) return;
   dept.isEditing = true;
 }
-function handleSave(dept: any) {
+async function handleSave(dept: Department) {
   dept.isEditing = false;
-}
-function handleCodeInput(dept: any) {
-  const found = departmentsMaster.find((m) => m.code === dept.code);
-  if (found) {
-    dept.name = found.name;
-    dept.affiliation = found.affiliation;
-  } else {
-    dept.name = '';
-    dept.affiliation = '';
-  }
-}
-function addDepartment() {
-  const newId = Math.max(...departments.value.map((d) => d.id), 0) + 1;
-  departments.value.push({
-    id: newId,
-    code: '',
-    name: '',
-    affiliation: '',
-    role: '一般',
-    emails: '',
-    isEditing: true,
+  // DB更新
+  await client.models.Department.update({
+    id: dept.id,
+    departmentId: dept.departmentId,
+    departmentCode: dept.departmentCode ?? dept.departmentId,
+    departmentName: dept.departmentName,
+    affiliationCode: dept.affiliationCode ?? '',
+    affiliationName: dept.affiliationName ?? '',
+    role: dept.role,
+    notificationEmails: dept.notificationEmails,
   });
+  await fetchPermissions();
 }
-function removeDepartment(id: number) {
-  departments.value = departments.value.filter((d) => d.id !== id);
+async function addDepartment() {
+  const newId = (
+    localPermissions.value.length > 0
+      ? Math.max(...localPermissions.value.map((d) => Number(d.departmentId))) +
+        1
+      : 1001
+  ).toString();
+  // DB追加
+  await client.models.Department.create({
+    departmentId: newId,
+    departmentCode: newId,
+    departmentName: '',
+    affiliationCode: '',
+    affiliationName: '',
+    role: '一般',
+    notificationEmails: [],
+  });
+  await fetchPermissions();
+}
+async function removeDepartment(departmentId: string) {
+  const dept = localPermissions.value.find(
+    (d) => d.departmentId === departmentId
+  );
+  if (!dept || !dept.id) return;
+  // DB削除
+  await client.models.Department.delete({ id: dept.id });
+  await fetchPermissions();
+}
+// 通知先メールアドレスinputの型安全なハンドラ
+function onEmailsInput(event: Event, dept: Department) {
+  const target = event.target as HTMLInputElement;
+  dept.notificationEmails = target.value
+    .split(',')
+    .map((e) => e.trim())
+    .filter((e) => e);
 }
 </script>
 

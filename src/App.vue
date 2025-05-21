@@ -1,13 +1,25 @@
-<script lang="ts">
-import { defineComponent } from 'vue';
+<script setup lang="ts">
 import { RouterView } from 'vue-router';
+import { useTagStore } from './stores/tagStore';
+import { useAuthStore } from './stores/authStore';
+import { watch } from 'vue';
 
-export default defineComponent({
-  name: 'App',
-  components: {
-    RouterView,
-  },
-});
+const tagStore = useTagStore();
+const authStore = useAuthStore();
+
+// ログイン状態の監視
+watch(
+  () => authStore.isAuthenticated,
+  async (isAuthenticated) => {
+    if (isAuthenticated) {
+      // ログイン時にタグデータを読み込む
+      await tagStore.fetchTags();
+    } else {
+      // ログアウト時にタグデータをクリア
+      tagStore.clearTags();
+    }
+  }
+);
 </script>
 
 <template>

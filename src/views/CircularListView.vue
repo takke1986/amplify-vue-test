@@ -11,6 +11,53 @@
       <div class="filter-row">
         <div class="filter-items">
           <div class="filter-group">
+            <label for="db-date-start">作成日（開始）</label>
+            <input
+              type="date"
+              id="db-date-start"
+              v-model="dbFilter.dateRange.start"
+              class="form-control"
+            />
+          </div>
+          <div class="filter-group">
+            <label for="db-date-end">作成日（終了）</label>
+            <input
+              type="date"
+              id="db-date-end"
+              v-model="dbFilter.dateRange.end"
+              class="form-control"
+            />
+          </div>
+          <div class="filter-group">
+            <label for="db-deadline-start">期限（開始）</label>
+            <input
+              type="date"
+              id="db-deadline-start"
+              v-model="dbFilter.deadlineRange.start"
+              class="form-control"
+            />
+          </div>
+          <div class="filter-group">
+            <label for="db-deadline-end">期限（終了）</label>
+            <input
+              type="date"
+              id="db-deadline-end"
+              v-model="dbFilter.deadlineRange.end"
+              class="form-control"
+            />
+          </div>
+          <div class="filter-group apply-button-group">
+            <label>&nbsp;</label>
+            <button @click="applyDbFilter" class="btn-apply">データ取得</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="filter-row">
+      <div class="filter-items">
+        <div class="filter-items">
+          <div class="filter-group">
             <label for="title">タイトル</label>
             <input
               type="text"
@@ -322,7 +369,10 @@
         <button
           v-if="item.type === 'page'"
           @click="goToPage(item.page!)"
-          :class="{ active: item.page === currentPage }"
+          :class="{
+            active: item.page === currentPage,
+            viewed: item.viewed,
+          }"
         >
           {{ item.page }}
         </button>
@@ -339,8 +389,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, inject, onUnmounted } from 'vue';
-import { circulars, processNames } from '@/mocks/mockCirculars';
+import {
+  ref,
+  computed,
+  watch,
+  onMounted,
+  inject,
+  onUnmounted,
+  onActivated,
+} from 'vue';
+import { generateClient } from 'aws-amplify/data';
+import type { Schema } from '../../amplify/data/resource';
+import { processNames } from '@/mocks/mockCirculars';
 
 interface Tag {
   name: string;
@@ -348,6 +408,8 @@ interface Tag {
 }
 
 const FILTER_KEY = 'circulars_filter';
+const PAGINATION_KEY = 'circulars_pagination';
+
 const defaultFilter = {
   title: '',
   creator: '',
@@ -363,23 +425,242 @@ const defaultFilter = {
   updatedBy: '',
   tag: '',
 };
-const filter = ref({ ...defaultFilter });
 
-// localStorageからフィルターを復元
+const defaultPagination = {
+  currentPage: 1,
+  itemsPerPage: 10,
+  viewedPages: new Set<number>(),
+};
+
+const filter = ref({ ...defaultFilter });
+const currentPage = ref(defaultPagination.currentPage);
+const itemsPerPage = ref(defaultPagination.itemsPerPage);
+
+const client = generateClient<Schema>();
+
+const circulars = ref<any[]>([]);
+const isLoading = ref(false);
+
+// ローカルストレージのキー
+const CIRCULARS_DATA_KEY = 'circulars_data';
+
+const dbFilter = ref({
+  dateRange: {
+    start: '',
+    end: '',
+  },
+  deadlineRange: {
+    start: '',
+    end: '',
+  },
+});
+
+// ページネーション設定をローカルストレージから読み込む
+function loadPaginationFromStorage() {
+  const saved = localStorage.getItem(PAGINATION_KEY);
+  if (saved) {
+    try {
+      const pagination = JSON.parse(saved);
+      currentPage.value = pagination.currentPage;
+      itemsPerPage.value = pagination.itemsPerPage;
+      // 閲覧済みページの情報を復元
+      if (pagination.viewedPages) {
+        defaultPagination.viewedPages = new Set(pagination.viewedPages);
+      }
+    } catch (e) {
+      console.error('ページネーション設定の読み込みエラー:', e);
+    }
+  }
+}
+
+// ページネーション設定をローカルストレージに保存
+function savePaginationToStorage() {
+  try {
+    localStorage.setItem(
+      PAGINATION_KEY,
+      JSON.stringify({
+        currentPage: currentPage.value,
+        itemsPerPage: itemsPerPage.value,
+        viewedPages: Array.from(defaultPagination.viewedPages), // Setを配列に変換して保存
+      })
+    );
+  } catch (e) {
+    console.error('ページネーション設定の保存エラー:', e);
+  }
+}
+
+// ページネーション設定の変更を監視
+watch(
+  [currentPage, itemsPerPage],
+  () => {
+    savePaginationToStorage();
+  },
+  { deep: true }
+);
+
+// ローカルストレージからデータを読み込む
+function loadCircularsFromStorage() {
+  const savedData = localStorage.getItem(CIRCULARS_DATA_KEY);
+  if (savedData) {
+    try {
+      circulars.value = JSON.parse(savedData);
+    } catch (e) {
+      console.error('ローカルストレージからのデータ読み込みエラー:', e);
+    }
+  }
+}
+
+// データをローカルストレージに保存
+function saveCircularsToStorage() {
+  try {
+    localStorage.setItem(CIRCULARS_DATA_KEY, JSON.stringify(circulars.value));
+  } catch (e) {
+    console.error('ローカルストレージへのデータ保存エラー:', e);
+  }
+}
+
+async function fetchCirculars() {
+  isLoading.value = true;
+
+  try {
+    // データベースフィルターの構築
+    const filter: any = {};
+
+    // 作成日フィルター
+    if (dbFilter.value.dateRange.start || dbFilter.value.dateRange.end) {
+      filter.createdAt = {};
+      if (dbFilter.value.dateRange.start) {
+        filter.createdAt.ge = new Date(
+          dbFilter.value.dateRange.start
+        ).toISOString();
+      }
+      if (dbFilter.value.dateRange.end) {
+        filter.createdAt.le = new Date(
+          dbFilter.value.dateRange.end
+        ).toISOString();
+      }
+    }
+
+    // 期限フィルター
+    if (
+      dbFilter.value.deadlineRange.start ||
+      dbFilter.value.deadlineRange.end
+    ) {
+      filter.deadline = {};
+      if (dbFilter.value.deadlineRange.start) {
+        filter.deadline.ge = new Date(
+          dbFilter.value.deadlineRange.start
+        ).toISOString();
+      }
+      if (dbFilter.value.deadlineRange.end) {
+        filter.deadline.le = new Date(
+          dbFilter.value.deadlineRange.end
+        ).toISOString();
+      }
+    }
+
+    const { data, errors } = await client.models.Circular.list({
+      filter: Object.keys(filter).length > 0 ? filter : undefined,
+      selectionSet: [
+        'id',
+        'title',
+        'creator',
+        'createdAt',
+        'deadline',
+        'process',
+        'department',
+        'updatedBy',
+        'updatedAt',
+        'fileLinks',
+        'content',
+        'circulationStatus',
+        'circularTags.tag.id',
+        'circularTags.tag.name',
+        'circularTags.tag.color',
+      ],
+    });
+
+    if (errors) {
+      console.error('APIエラー:', errors);
+      return;
+    }
+
+    circulars.value = (data ?? []).map((c: any) => {
+      const tags = Array.isArray(c.circularTags)
+        ? c.circularTags
+            .map((ct: any) => (ct && ct.tag ? ct.tag : null))
+            .filter(Boolean)
+        : [];
+
+      let fileLinks: any[] = [];
+      if (typeof c.fileLinks === 'string') {
+        try {
+          fileLinks = JSON.parse(c.fileLinks);
+        } catch (e) {
+          console.error('fileLinks JSONパースエラー:', e);
+        }
+      } else if (Array.isArray(c.fileLinks)) {
+        fileLinks = c.fileLinks;
+      }
+
+      let circulationStatus: any[] = [];
+      if (typeof c.circulationStatus === 'string') {
+        try {
+          circulationStatus = JSON.parse(c.circulationStatus);
+        } catch (e) {
+          console.error('circulationStatus JSONパースエラー:', e);
+        }
+      } else if (Array.isArray(c.circulationStatus)) {
+        circulationStatus = c.circulationStatus;
+      }
+
+      return {
+        ...c,
+        tags,
+        fileLinks,
+        circulationStatus,
+        content: typeof c.content === 'string' ? c.content : '',
+      };
+    });
+
+    // データをローカルストレージに保存
+    saveCircularsToStorage();
+  } catch (error) {
+    console.error('予期せぬエラー:', error);
+  } finally {
+    isLoading.value = false;
+  }
+}
+
 onMounted(() => {
+  // 初期表示時はローカルストレージからデータを読み込む
+  loadCircularsFromStorage();
+
+  // フィルター設定を読み込む
   const saved = localStorage.getItem(FILTER_KEY);
   if (saved) {
     try {
       filter.value = JSON.parse(saved);
     } catch {}
   }
+
+  // ページネーション設定を読み込む
+  loadPaginationFromStorage();
 });
 
-// フィルター変更時にlocalStorageへ保存
+onActivated(() => {
+  // ページネーション設定を再読み込み
+  loadPaginationFromStorage();
+});
+
 watch(
   filter,
-  (val) => {
-    localStorage.setItem(FILTER_KEY, JSON.stringify(val));
+  (newVal, oldVal) => {
+    // フィルターが実際に変更された場合のみページをリセット
+    if (JSON.stringify(newVal) !== JSON.stringify(oldVal)) {
+      currentPage.value = 1;
+      savePaginationToStorage();
+    }
   },
   { deep: true }
 );
@@ -399,23 +680,7 @@ function isSameBushoGroup(userBusho: unknown, recordBusho: unknown): boolean {
 const currentUser = inject('currentUser') as any;
 
 const filteredCirculars = computed(() => {
-  let result = circulars as any[];
-
-  // まずログイン者の部署グループでフィルタリング
-  if (currentUser?.value?.busho) {
-    const userBusho = currentUser.value.busho;
-    result = result.filter((c: any) => {
-      // 作成者部署が同じグループ
-      if (isSameBushoGroup(userBusho, c.department)) return true;
-      // 回覧先のいずれかが同じグループ
-      if (c.circulationStatus && Array.isArray(c.circulationStatus)) {
-        return c.circulationStatus.some((cs: any) =>
-          isSameBushoGroup(userBusho, cs.departmentId)
-        );
-      }
-      return false;
-    });
-  }
+  let result = circulars.value;
 
   // タイトルフィルタ
   if (filter.value.title) {
@@ -480,6 +745,8 @@ const filteredCirculars = computed(() => {
 
 const resetFilters = () => {
   filter.value = { ...defaultFilter };
+  currentPage.value = 1;
+  savePaginationToStorage();
 };
 
 const formatDate = (date: string) => {
@@ -487,14 +754,8 @@ const formatDate = (date: string) => {
 };
 
 // ページネーション用の状態
-const currentPage = ref(1);
-const itemsPerPage = ref(10);
-
 const totalPages = computed(() => {
-  return Math.max(
-    1,
-    Math.ceil(filteredCirculars.value.length / itemsPerPage.value)
-  );
+  return Math.ceil(filteredCirculars.value.length / itemsPerPage.value);
 });
 
 const sortKey = ref('');
@@ -545,52 +806,73 @@ const sortedCirculars = computed(() => {
 
 const paginatedCirculars = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value;
-  return sortedCirculars.value.slice(start, start + itemsPerPage.value);
+  const end = start + itemsPerPage.value;
+  return sortedCirculars.value.slice(start, end);
 });
 
 const goToPage = (page: number) => {
   if (page >= 1 && page <= totalPages.value) {
     currentPage.value = page;
-  }
-};
-
-const prevPage = () => {
-  if (currentPage.value > 1) {
-    currentPage.value--;
+    // 閲覧済みページとして記録
+    defaultPagination.viewedPages.add(page);
+    savePaginationToStorage();
   }
 };
 
 const nextPage = () => {
   if (currentPage.value < totalPages.value) {
     currentPage.value++;
+    // 閲覧済みページとして記録
+    defaultPagination.viewedPages.add(currentPage.value);
+    savePaginationToStorage();
+  }
+};
+
+const prevPage = () => {
+  if (currentPage.value > 1) {
+    currentPage.value--;
+    // 閲覧済みページとして記録
+    defaultPagination.viewedPages.add(currentPage.value);
+    savePaginationToStorage();
   }
 };
 
 const onItemsPerPageChange = () => {
   currentPage.value = 1;
+  savePaginationToStorage();
 };
-
-// フィルターが変わったら1ページ目に戻す
-watch(filteredCirculars, () => {
-  currentPage.value = 1;
-});
 
 // ページネーションの表示範囲を計算
 const paginationRange = computed(() => {
-  const range: { type: 'page' | 'ellipsis'; page?: number; key: string }[] = [];
+  const range: {
+    type: 'page' | 'ellipsis';
+    page?: number;
+    key: string;
+    viewed?: boolean;
+  }[] = [];
   const total = totalPages.value;
   const current = currentPage.value;
   const delta = 2; // 現在ページの前後何ページを表示するか
 
   if (total <= 7) {
     for (let i = 1; i <= total; i++) {
-      range.push({ type: 'page', page: i, key: `page-${i}` });
+      range.push({
+        type: 'page',
+        page: i,
+        key: `page-${i}`,
+        viewed: defaultPagination.viewedPages.has(i),
+      });
     }
     return range;
   }
 
   // 先頭
-  range.push({ type: 'page', page: 1, key: 'page-1' });
+  range.push({
+    type: 'page',
+    page: 1,
+    key: 'page-1',
+    viewed: defaultPagination.viewedPages.has(1),
+  });
 
   // 省略（左）
   if (current > delta + 2) {
@@ -601,7 +883,12 @@ const paginationRange = computed(() => {
   const start = Math.max(2, current - delta);
   const end = Math.min(total - 1, current + delta);
   for (let i = start; i <= end; i++) {
-    range.push({ type: 'page', page: i, key: `page-${i}` });
+    range.push({
+      type: 'page',
+      page: i,
+      key: `page-${i}`,
+      viewed: defaultPagination.viewedPages.has(i),
+    });
   }
 
   // 省略（右）
@@ -610,7 +897,12 @@ const paginationRange = computed(() => {
   }
 
   // 最後
-  range.push({ type: 'page', page: total, key: `page-${total}` });
+  range.push({
+    type: 'page',
+    page: total,
+    key: `page-${total}`,
+    viewed: defaultPagination.viewedPages.has(total),
+  });
 
   return range;
 });
@@ -640,7 +932,7 @@ onUnmounted(() => {
 // 全回覧からユニークなタグ名一覧を取得
 const uniqueTags = computed(() => {
   const tags = new Set<string>();
-  (circulars as { tags?: Tag[] }[]).forEach((c) => {
+  (circulars.value as { tags?: Tag[] }[]).forEach((c) => {
     if (Array.isArray(c.tags)) {
       c.tags.forEach((t: Tag) => tags.add(t.name));
     }
@@ -667,6 +959,13 @@ function selectTagSuggestion(tag: string) {
 function onTagBlur() {
   setTimeout(() => (showTagSuggest.value = false), 100);
 }
+
+// データベースフィルター適用関数
+const applyDbFilter = () => {
+  currentPage.value = 1;
+  savePaginationToStorage();
+  fetchCirculars();
+};
 </script>
 
 <style scoped>
@@ -1101,5 +1400,47 @@ h2 {
     max-width: 100%;
     min-width: 0;
   }
+}
+
+.apply-button-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-width: 140px;
+  max-width: 180px;
+}
+
+.btn-apply {
+  padding: 8px 16px;
+  background-color: #1976d2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 16pt;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  height: 40px;
+  width: 100%;
+  margin-top: 0;
+}
+
+.btn-apply:hover {
+  background-color: #1565c0;
+}
+
+.pagination button.viewed {
+  background: #e3f2fd;
+  border-color: #2196f3;
+  color: #1976d2;
+}
+
+.pagination button.viewed:hover {
+  background: #bbdefb;
+}
+
+.pagination button.viewed.active {
+  background: #1976d2;
+  color: #fff;
+  border-color: #1976d2;
 }
 </style>

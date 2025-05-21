@@ -1,19 +1,13 @@
 {
   "auth": {
-    "user_pool_id": "ap-northeast-1_DLYTUfgna",
+    "user_pool_id": "ap-northeast-1_fKFJxdxmt",
     "aws_region": "ap-northeast-1",
-    "user_pool_client_id": "5ig2goreuejrhglo8p7rioapfv",
-    "identity_pool_id": "ap-northeast-1:4d2b94e7-ed2f-4ef2-a6e5-f6cb2934c7e8",
+    "user_pool_client_id": "4647supcm00m82turi4pkdf0tt",
+    "identity_pool_id": "ap-northeast-1:04aa825c-fa37-44d7-b258-ce8a6713f7d9",
     "mfa_methods": [],
-    "standard_required_attributes": [
-      "email"
-    ],
-    "username_attributes": [
-      "email"
-    ],
-    "user_verification_types": [
-      "email"
-    ],
+    "standard_required_attributes": ["email"],
+    "username_attributes": ["email"],
+    "user_verification_types": ["email"],
     "mfa_configuration": "NONE",
     "password_policy": {
       "min_length": 8,
@@ -37,7 +31,6 @@
         "http://localhost:3000",
         "http://localhost:3000/index.html",
         "http://localhost:3000/login",
-        "https://main.dg4wq6dpc31ft.amplifyapp.com",
         "https://main.dg4wq6dpc31ft.amplifyapp.com/login"
       ],
       "response_type": "code",
@@ -48,19 +41,16 @@
         "profile",
         "aws.cognito.signin.user.admin"
       ],
-      "domain": "c63aff4c29f0961ee116.auth.ap-northeast-1.amazoncognito.com"
+      "domain": "00465eba4affa527cdf3.auth.ap-northeast-1.amazoncognito.com"
     },
     "unauthenticated_identities_enabled": true
   },
   "data": {
-    "url": "https://7biggyqeibfffa3l4qer6zycve.appsync-api.ap-northeast-1.amazonaws.com/graphql",
+    "url": "https://fhprrabylzedjlelxmd2alw3om.appsync-api.ap-northeast-1.amazonaws.com/graphql",
     "aws_region": "ap-northeast-1",
-    "api_key": "da2-x2yprz544zfzngeczmubqb6dnq",
+    "api_key": "da2-6mtslyyifrhzrolntdluevun4e",
     "default_authorization_type": "API_KEY",
-    "authorization_types": [
-      "AMAZON_COGNITO_USER_POOLS",
-      "AWS_IAM"
-    ],
+    "authorization_types": ["AMAZON_COGNITO_USER_POOLS", "AWS_IAM"],
     "model_introspection": {
       "version": 1,
       "models": {
@@ -112,12 +102,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -134,5 +119,5 @@
       "nonModels": {}
     }
   },
-  "version": "1.2"
+  "version": "1.3"
 }

@@ -55,8 +55,8 @@
           <label>タグ</label>
           <div class="tag-select-btn-list">
             <button
-              v-for="tag in tagSettings"
-              :key="tag.name"
+              v-for="tag in tagOptions"
+              :key="tag.id"
               type="button"
               :class="['tag-select-btn', { selected: isTagSelected(tag.name) }]"
               :style="{
@@ -80,23 +80,32 @@
             ref="editorContainer"
           ></div>
           <div class="form-group">
-            <label for="url-link">URLリンク</label>
+            <label>URLリンク</label>
             <div class="url-link-input-group">
+              <input
+                id="url-link-name"
+                v-model="urlNameInput"
+                type="text"
+                class="form-control"
+                placeholder="リンク名称（例: 仕様書）"
+              />
               <input
                 id="url-link"
                 v-model="urlInput"
                 type="url"
                 class="form-control"
                 placeholder="https://example.com/"
+                style="flex: 1"
               />
               <button type="button" class="btn-add-url" @click="addUrlLink">
                 追加
               </button>
             </div>
             <ul class="url-link-list">
-              <li v-for="(url, idx) in urlLinks" :key="url">
-                <a :href="url" target="_blank" rel="noopener noreferrer">{{
-                  url
+              <li v-for="(file, idx) in urlLinks" :key="file.id">
+                <span>{{ file.name || file.url }}</span>
+                <a :href="file.url" target="_blank" rel="noopener noreferrer">{{
+                  file.url
                 }}</a>
                 <button
                   type="button"
@@ -140,6 +149,41 @@
     </div>
     <div class="scroll-guide" id="scroll-guide">{{ guideText }}</div>
     <div class="scroll-fade"></div>
+    <!-- 確認モーダルを追加 -->
+    <div
+      v-if="showConfirmModal"
+      class="modal-overlay"
+      @click.self="closeConfirmModal"
+    >
+      <div class="modal-content confirm-modal">
+        <h3>回覧箋の作成確認</h3>
+        <div class="confirm-content">
+          <p>以下の内容で回覧箋を作成します。よろしいですか？</p>
+          <div class="confirm-details">
+            <div class="confirm-item">
+              <span class="label">タイトル：</span>
+              <span class="value">{{ title }}</span>
+            </div>
+            <div class="confirm-item">
+              <span class="label">期限：</span>
+              <span class="value">{{ formatDate(deadline) }}</span>
+            </div>
+            <div class="confirm-item">
+              <span class="label">工程：</span>
+              <span class="value">{{ processNames[process] }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-submit btn-primary" @click="confirmSubmit">
+            作成する
+          </button>
+          <button class="btn-submit btn-secondary" @click="closeConfirmModal">
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -155,15 +199,18 @@ import {
   onMounted,
   onUnmounted,
 } from 'vue';
-import {
-  circulars as mockCirculars,
-  processNames,
-} from '@/mocks/mockCirculars';
+import { processNames } from '@/mocks/mockCirculars';
 import { storeToRefs } from 'pinia';
 import { useTagSettingsStore } from '@/stores/tagSettings';
 import Quill from 'quill';
 import QuillImageDropAndPaste from 'quill-image-drop-and-paste';
 import 'quill/dist/quill.snow.css';
+import { uploadData } from 'aws-amplify/storage';
+import { v4 as uuidv4 } from 'uuid';
+import { generateClient } from 'aws-amplify/data';
+import type { Schema } from '../../amplify/data/resource';
+import { useRouter } from 'vue-router';
+import { useTagStore } from '@/stores/tagStore';
 
 Quill.register('modules/imageDropAndPaste', QuillImageDropAndPaste);
 
@@ -199,14 +246,6 @@ const blobUrl = ref<string | null>(null);
 
 const imagePreviewUrl = ref<string | null>(null);
 const showImageModal = ref(false);
-
-const imageHandler = (dataUrl: string, type: string) => {
-  image.type = type;
-  image.dataUrl = dataUrl;
-  image.blob = null;
-  image.file = null;
-  blobUrl.value = null;
-};
 
 const textPasteHander = (text: string) => {
   const Delta = Quill.import('delta');
@@ -261,7 +300,8 @@ watch(
       theme: 'snow',
     });
 
-    quill.getModule('toolbar').addHandler('image', (clicked: boolean) => {
+    // カスタム画像ハンドラ
+    quill.getModule('toolbar').addHandler('image', async (clicked: boolean) => {
       if (clicked) {
         let fileInput = document.querySelector(
           'input.ql-image[type=file]'
@@ -274,31 +314,81 @@ watch(
             'image/png, image/gif, image/jpeg, image/bmp, image/x-icon'
           );
           fileInput.classList.add('ql-image');
-          fileInput.addEventListener('change', (e: Event) => {
+          fileInput.addEventListener('change', async (e: Event) => {
             const input = e.target as HTMLInputElement;
             const files = input.files;
-            if (files && files.length > 0) {
-              const fileObj = files[0];
-              const type = fileObj.type;
-              const reader = new FileReader();
-              reader.onload = (ev) => {
-                const dataUrl = ev.target?.result as string;
-                imageHandler(dataUrl, type);
-                // Quillに画像を挿入
+            if (!files || files.length === 0) return;
+            const fileObj = files[0];
+            if (!fileObj || !fileObj.type) return;
+            const type = fileObj.type;
+            const reader = new FileReader();
+            reader.onload = async (ev) => {
+              const arrayBuffer = ev.target?.result as ArrayBuffer;
+              let ext = 'png';
+              if (typeof type === 'string' && type.includes('/')) {
+                ext = type.split('/')[1] || 'png';
+              }
+              const s3Key = `circulars/${uuidv4()}.${ext}`;
+              try {
+                await uploadData({
+                  path: s3Key,
+                  data: arrayBuffer,
+                });
                 const range = quill!.getSelection();
                 quill!.insertEmbed(
                   range ? range.index : 0,
                   'image',
-                  dataUrl,
+                  s3Key,
                   'user'
                 );
-                fileInput!.value = '';
-              };
-              reader.readAsDataURL(fileObj);
-            }
+              } catch (err) {
+                error.value = '画像のアップロードに失敗しました';
+              }
+              fileInput!.value = '';
+            };
+            reader.readAsArrayBuffer(fileObj);
           });
         }
         fileInput.click();
+      }
+    });
+
+    // DataURL画像の貼り付け・ドラッグ&ドロップにも対応
+    quill.root.addEventListener('paste', async (e: ClipboardEvent) => {
+      if (!e.clipboardData) return;
+      const items = e.clipboardData.items;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (!file || !file.type) continue;
+          const type = file.type;
+          const reader = new FileReader();
+          reader.onload = async (ev) => {
+            const arrayBuffer = ev.target?.result as ArrayBuffer;
+            let ext = 'png';
+            if (typeof type === 'string' && type.includes('/')) {
+              ext = type.split('/')[1] || 'png';
+            }
+            const s3Key = `circulars/${uuidv4()}.${ext}`;
+            try {
+              await uploadData({
+                path: s3Key,
+                data: arrayBuffer,
+              });
+              const range = quill!.getSelection();
+              quill!.insertEmbed(
+                range ? range.index : 0,
+                'image',
+                s3Key,
+                'user'
+              );
+            } catch (err) {
+              error.value = '画像のアップロードに失敗しました';
+            }
+            e.preventDefault();
+          };
+          reader.readAsArrayBuffer(file);
+        }
       }
     });
 
@@ -309,10 +399,12 @@ watch(
   { immediate: true }
 );
 
+const urlNameInput = ref('');
 const urlInput = ref('');
-const urlLinks = ref<string[]>([]);
+const urlLinks = ref<FileLink[]>([]);
 
 function addUrlLink() {
+  const name = urlNameInput.value.trim();
   const url = urlInput.value.trim();
   if (!url) return;
   try {
@@ -321,11 +413,16 @@ function addUrlLink() {
     error.value = '有効なURLを入力してください。';
     return;
   }
-  if (urlLinks.value.includes(url)) {
+  if (urlLinks.value.some((file) => file.url === url)) {
     error.value = '同じURLは追加できません。';
     return;
   }
-  urlLinks.value.push(url);
+  urlLinks.value.push({
+    id: Date.now().toString(),
+    name: name || url,
+    url,
+  });
+  urlNameInput.value = '';
   urlInput.value = '';
   error.value = '';
 }
@@ -333,8 +430,19 @@ function removeUrlLink(idx: number) {
   urlLinks.value.splice(idx, 1);
 }
 
-const handleSubmit = () => {
-  error.value = '';
+const client = generateClient<Schema>();
+const router = useRouter();
+
+// 確認モーダル用の状態
+const showConfirmModal = ref(false);
+
+// 日付フォーマット関数を追加
+const formatDate = (date: string) => {
+  return new Date(date).toLocaleDateString('ja-JP');
+};
+
+// 確認モーダルを開く
+const openConfirmModal = () => {
   if (
     !title.value ||
     !deadline.value ||
@@ -344,41 +452,65 @@ const handleSubmit = () => {
     error.value = 'すべての必須項目を入力してください。';
     return;
   }
-  // mockCircularsに追加（status: in_progress）
-  const now = new Date();
-  mockCirculars.push({
-    id: String(mockCirculars.length + 1),
-    title: title.value,
-    content: bodyHtml.value,
-    creator:
-      currentUser?.value?.displayname ||
-      currentUser?.value?.username ||
-      '未取得',
-    createdAt: now.toISOString(),
-    deadline: deadline.value,
-    process: process.value,
-    department: String(currentUser?.value?.busho),
-    recipients: [],
-    files: urlLinks.value.map((url, i) => ({
-      id: String(i + 1),
-      name: url,
-      url,
-    })),
-    tags: tagSettings.value.filter((t) => selectedTags.value.includes(t.name)),
-    status: 'in_progress',
-    circulationStatus: [],
-    updatedBy:
-      currentUser?.value?.displayname ||
-      currentUser?.value?.username ||
-      '未取得',
-    updatedAt: now.toISOString(),
-  } as any);
-  alert('回覧箋を作成しました！');
-  title.value = '';
-  deadline.value = '';
-  if (quill) quill.setContents([]);
-  bodyHtml.value = '';
-  urlLinks.value = [];
+  showConfirmModal.value = true;
+};
+
+// 確認モーダルを閉じる
+const closeConfirmModal = () => {
+  showConfirmModal.value = false;
+};
+
+// 確認後の送信処理
+const confirmSubmit = async () => {
+  try {
+    // 回覧箋を作成
+    const { data: circular } = await client.models.Circular.create({
+      title: title.value,
+      content: bodyHtml.value,
+      creator:
+        currentUser?.value?.displayname ||
+        currentUser?.value?.username ||
+        '未取得',
+      createdAt: new Date().toISOString(),
+      deadline: deadline.value,
+      process: process.value,
+      department: String(currentUser?.value?.busho),
+      recipients: [],
+      fileLinks: JSON.stringify(urlLinks.value),
+      status: 'in_progress',
+      circulationStatus: JSON.stringify([]),
+      updatedBy:
+        currentUser?.value?.displayname ||
+        currentUser?.value?.username ||
+        '未取得',
+      updatedAt: new Date().toISOString(),
+      history: JSON.stringify([]),
+    });
+
+    // タグを作成
+    if (circular && selectedTags.value.length > 0) {
+      for (const tagName of selectedTags.value) {
+        const tagData = tagOptions.value.find((t) => t.name === tagName);
+        if (tagData) {
+          await client.models.CircularTag.create({
+            circularId: circular.id,
+            tagId: tagData.id,
+          });
+        }
+      }
+    }
+
+    // 完了後リスト画面へ遷移
+    router.push('/circulars');
+  } catch (e) {
+    error.value = '登録に失敗しました';
+    closeConfirmModal();
+  }
+};
+
+// handleSubmitを修正
+const handleSubmit = () => {
+  openConfirmModal();
 };
 
 const STORAGE_KEY = 'circular_create_draft';
@@ -539,19 +671,42 @@ onUnmounted(() => {
 // タグ選択用
 const selectedTags = ref<string[]>([]); // nameのみ保持
 function toggleTag(tagName: string) {
-  const idx = selectedTags.value.indexOf(tagName);
-  if (idx === -1) {
-    selectedTags.value.push(tagName);
-  } else {
-    selectedTags.value.splice(idx, 1);
+  const tag = tagOptions.value.find((t) => t.name === tagName);
+  if (tag && tag.name) {
+    // タグ名が存在する場合のみ処理
+    const idx = selectedTags.value.indexOf(tagName);
+    if (idx === -1) {
+      selectedTags.value.push(tagName);
+    } else {
+      selectedTags.value.splice(idx, 1);
+    }
   }
 }
 function isTagSelected(tagName: string) {
   return selectedTags.value.includes(tagName);
 }
 
-const tagSettingsStore = useTagSettingsStore();
-const { tagSettings } = storeToRefs(tagSettingsStore);
+const tagStore = useTagStore();
+
+// タグの初期化
+onMounted(async () => {
+  await tagStore.fetchTags();
+  console.log('タグデータ:', tagStore.getTags); // デバッグ用
+});
+
+// タグの選択肢を取得
+const tagOptions = computed(() => {
+  const tags = tagStore.getTags;
+  // 名称が未設定のタグをフィルタリング
+  return tags.filter((tag) => tag.name && tag.name.trim() !== '');
+});
+
+// 追加: ファイル型定義
+interface FileLink {
+  id: string;
+  name: string;
+  url: string;
+}
 </script>
 
 <style scoped>
@@ -733,7 +888,12 @@ label {
 .url-link-input-group {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  align-items: center;
+}
+.url-link-input-group input[type='text'],
+.url-link-input-group input[type='url'] {
+  flex: 1 1 0;
+  min-width: 0;
 }
 .btn-add-url {
   background: #1976d2;
@@ -854,6 +1014,68 @@ label {
 .tag-select-btn.selected {
   opacity: 1;
   box-shadow: 0 0 0 2px #1976d2;
+}
+/* 確認モーダル用のスタイルを追加 */
+.confirm-modal {
+  max-width: 600px;
+  width: 90%;
+}
+
+.confirm-modal h3 {
+  font-size: 1.5rem;
+  color: #1976d2;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.confirm-content {
+  margin-bottom: 2rem;
+}
+
+.confirm-content p {
+  font-size: 1.1rem;
+  color: #374151;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.confirm-details {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.confirm-item {
+  display: flex;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+.confirm-item:last-child {
+  margin-bottom: 0;
+}
+
+.confirm-item .label {
+  font-weight: 600;
+  color: #374151;
+  width: 80px;
+  flex-shrink: 0;
+}
+
+.confirm-item .value {
+  color: #1f2937;
+  flex-grow: 1;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.modal-actions .btn-submit {
+  min-width: 160px;
 }
 </style>
 

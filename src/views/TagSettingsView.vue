@@ -31,7 +31,7 @@
           <td class="actions-cell">
             <div class="actions-group">
               <button class="edit-btn" @click="openEditModal(idx)">編集</button>
-              <button class="delete-btn" @click="removeTagSetting(idx)">
+              <button class="delete-btn" @click="removeTagSetting(tag)">
                 削除
               </button>
             </div>
@@ -137,16 +137,42 @@
         </div>
       </div>
     </div>
+
+    <!-- 削除確認モーダル -->
+    <div v-if="showDeleteModal" class="modal-overlay" @click="closeDeleteModal">
+      <div class="modal-content" @click.stop>
+        <h3>タグの削除確認</h3>
+        <div class="confirm-content">
+          <p>このタグは{{ deleteTargetCount }}件の回覧箋で使用されています。</p>
+          <p>削除すると、これらの回覧箋からタグが解除されます。</p>
+          <p>削除を続行しますか？</p>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-submit btn-primary" @click="confirmDelete">
+            削除する
+          </button>
+          <button class="btn-submit btn-secondary" @click="closeDeleteModal">
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, inject } from 'vue';
+import { ref, reactive, inject, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useTagSettingsStore } from '@/stores/tagSettings';
+import { useTagStore } from '@/stores/tagStore';
+import { generateClient } from 'aws-amplify/data';
+import type { Schema } from '../../amplify/data/resource';
+import { v4 as uuidv4 } from 'uuid';
 
 const tagSettingsStore = useTagSettingsStore();
 const { tagSettings } = storeToRefs(tagSettingsStore);
+
+const tagStore = useTagStore();
 
 const currentUser = inject('currentUser') as any;
 
@@ -165,8 +191,6 @@ const processNames = [
   '再確認',
   '再承認',
   '再決裁',
-  '追加1',
-  '追加2',
 ];
 
 interface ProcessSetting {
@@ -174,7 +198,9 @@ interface ProcessSetting {
   mailNotify: boolean;
   todoMessages: string[];
 }
+
 interface TagSetting {
+  id: string;
   name: string;
   color: string;
   processSettings: ProcessSetting[];
@@ -182,8 +208,69 @@ interface TagSetting {
   createdAt?: string;
 }
 
-function addTagSetting() {
+const client = generateClient<Schema>();
+
+onMounted(() => {
+  tagSettingsStore.fetchTags();
+});
+
+// タグ削除
+const removeTagSetting = async (tag: any) => {
+  try {
+    // タグが使用中かどうかを確認
+    const result = await client.models.CircularTag.list({
+      filter: {
+        tagId: { eq: tag.id },
+      },
+    });
+
+    const circularTags = result.data || [];
+    // 使用中かどうかに関わらず、確認モーダルを表示
+    deleteTargetTag.value = tag;
+    deleteTargetCount.value = circularTags.length;
+    showDeleteModal.value = true;
+  } catch (error) {
+    console.error('タグの削除に失敗しました:', error);
+  }
+};
+
+const confirmDelete = async () => {
+  if (!deleteTargetTag.value) return;
+
+  try {
+    // 関連するCircularTagを削除
+    const result = await client.models.CircularTag.list({
+      filter: {
+        tagId: { eq: deleteTargetTag.value.id },
+      },
+    });
+
+    const circularTags = result.data || [];
+    for (const circularTag of circularTags) {
+      await client.models.CircularTag.delete({ id: circularTag.id });
+    }
+
+    // タグを削除
+    await client.models.Tag.delete({ id: deleteTargetTag.value.id });
+    await tagStore.fetchTags();
+    await tagSettingsStore.fetchTags();
+  } catch (error) {
+    console.error('タグの削除に失敗しました:', error);
+  } finally {
+    closeDeleteModal();
+  }
+};
+
+const closeDeleteModal = () => {
+  showDeleteModal.value = false;
+  deleteTargetTag.value = null;
+  deleteTargetCount.value = 0;
+};
+
+// タグ追加
+async function addTagSetting() {
   const newTag = {
+    id: uuidv4(),
     name: '',
     color: '#1976d2',
     processSettings: Array.from({ length: PROCESS_COUNT }, (_, i) => ({
@@ -194,12 +281,41 @@ function addTagSetting() {
     createdBy: currentUser?.value?.busho || '不明',
     createdAt: new Date().toISOString(),
   };
-  tagSettingsStore.setTagSettings([...tagSettings.value, newTag]);
-}
-function removeTagSetting(idx: number) {
-  const newArr = [...tagSettings.value];
-  newArr.splice(idx, 1);
-  tagSettingsStore.setTagSettings(newArr);
+
+  try {
+    // 同じidのタグが存在しないか確認
+    const { data } = await client.models.Tag.list({
+      filter: {
+        id: { eq: newTag.id },
+      },
+      selectionSet: ['id'],
+    });
+
+    if (data && data.length > 0) {
+      console.error('同じidのタグが既に存在します:', newTag.id);
+      return;
+    }
+
+    const { errors } = await client.models.Tag.create({
+      id: newTag.id,
+      name: newTag.name,
+      color: newTag.color,
+      createdBy: newTag.createdBy,
+      createdAt: newTag.createdAt,
+      processSettings: JSON.stringify(newTag.processSettings),
+    });
+
+    if (errors) {
+      console.error('Tag登録失敗', errors);
+      return;
+    }
+
+    // 登録成功後、両方のストアを更新（順番に実行）
+    await tagStore.refreshTags();
+    await tagSettingsStore.fetchTags();
+  } catch (e) {
+    console.error('Tag登録失敗', e);
+  }
 }
 
 // Todo文言追加・削除
@@ -213,11 +329,24 @@ function removeTodoMessage(processIdx: number, msgIdx: number) {
 // モーダル制御
 const showModal = ref(false);
 const editingTagIdx = ref<number | null>(null);
-const editingTag = reactive({} as TagSetting);
+const editingTag = reactive<TagSetting>({
+  id: '',
+  name: '',
+  color: '#1976d2',
+  processSettings: [],
+  createdBy: '',
+  createdAt: '',
+});
+
+// 削除確認モーダル用の状態
+const showDeleteModal = ref(false);
+const deleteTargetTag = ref<any>(null);
+const deleteTargetCount = ref(0);
 
 function openEditModal(idx: number) {
   editingTagIdx.value = idx;
   const base = JSON.parse(JSON.stringify(tagSettings.value[idx]));
+  base.id = tagSettings.value[idx].id;
   const settings = base.processSettings || [];
   const newSettings: ProcessSetting[] = [];
   for (let i = 0; i < processNames.length; i++) {
@@ -244,14 +373,65 @@ function openEditModal(idx: number) {
 function closeModal() {
   showModal.value = false;
 }
-function saveProcessSettings() {
+
+// タグ編集
+async function saveProcessSettings() {
   if (editingTagIdx.value !== null) {
-    // editingTagの内容をtagSettingsに反映
-    const newArr = [...tagSettings.value];
-    newArr[editingTagIdx.value] = JSON.parse(JSON.stringify(editingTag));
-    tagSettingsStore.setTagSettings(newArr);
+    try {
+      // まずタグの存在確認
+      const { data } = await client.models.Tag.list({
+        filter: {
+          id: { eq: editingTag.id },
+        },
+        selectionSet: [
+          'id',
+          'name',
+          'color',
+          'processSettings',
+          'createdBy',
+          'createdAt',
+        ],
+      });
+
+      console.log('検索結果:', data); // デバッグ用
+      const tag = data?.[0];
+      if (!tag) {
+        console.error('タグが見つかりません:', editingTag.id);
+        return;
+      }
+
+      // タグの更新
+      const updateData = {
+        id: tag.id,
+        name: editingTag.name,
+        color: editingTag.color,
+        createdBy: editingTag.createdBy,
+        createdAt: editingTag.createdAt,
+        processSettings: JSON.stringify(editingTag.processSettings),
+      };
+
+      console.log('更新データ:', updateData); // デバッグ用
+
+      const { errors } = await client.models.Tag.update(updateData);
+
+      if (errors) {
+        console.error('Tag更新失敗', errors);
+        return;
+      }
+
+      // 更新成功後、両方のストアを更新
+      await Promise.all([tagStore.refreshTags(), tagSettingsStore.fetchTags()]);
+
+      // ローカルの状態を更新
+      const newArr = [...tagSettings.value];
+      newArr[editingTagIdx.value] = JSON.parse(JSON.stringify(editingTag));
+      tagSettingsStore.setTagSettings(newArr);
+
+      showModal.value = false;
+    } catch (e) {
+      console.error('Tag更新失敗', e);
+    }
   }
-  showModal.value = false;
 }
 </script>
 
@@ -564,5 +744,44 @@ function saveProcessSettings() {
   box-sizing: border-box;
   border-radius: 4px;
   margin-left: 0.5rem;
+}
+
+/* 削除確認モーダル用のスタイル */
+.confirm-content {
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+.confirm-content p {
+  margin: 0.5rem 0;
+  font-size: 1.1rem;
+  color: #374151;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.modal-actions .btn-submit {
+  min-width: 160px;
+}
+
+.btn-primary {
+  background: #dc2626;
+}
+
+.btn-primary:hover {
+  background: #b91c1c;
+}
+
+.btn-secondary {
+  background: #6b7280;
+}
+
+.btn-secondary:hover {
+  background: #4b5563;
 }
 </style>

@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
+import { generateClient } from 'aws-amplify/data';
+import type { Schema } from '../../amplify/data/resource';
 
 // 型定義
 export interface ProcessSetting {
@@ -8,6 +10,7 @@ export interface ProcessSetting {
   todoMessages: string[];
 }
 export interface TagSetting {
+  id: string;
   name: string;
   color: string;
   processSettings: ProcessSetting[];
@@ -17,38 +20,49 @@ export interface TagSetting {
 
 const PROCESS_COUNT = 15;
 
-// 初期タグ例
-const initialTagSettings: TagSetting[] = [
-  {
-    name: '重要',
-    color: '#e53935',
-    processSettings: Array.from({ length: PROCESS_COUNT }, (_, i) => ({
-      process: i + 1,
-      mailNotify: false,
-      todoMessages: i === 0 ? ['至急対応してください'] : [],
-    })),
-    createdBy: 'システム',
-    createdAt: '2024-06-01T00:00:00Z',
-  },
-  {
-    name: '連絡',
-    color: '#1976d2',
-    processSettings: Array.from({ length: PROCESS_COUNT }, (_, i) => ({
-      process: i + 1,
-      mailNotify: false,
-      todoMessages: i === 1 ? ['ご確認ください'] : [],
-    })),
-    createdBy: 'システム',
-    createdAt: '2024-06-01T00:00:00Z',
-  },
-];
+// 初期タグ例（初期値は空配列に変更）
+// const initialTagSettings: TagSetting[] = [ ... ];
+
+const client = generateClient<Schema>();
 
 export const useTagSettingsStore = defineStore('tagSettings', () => {
-  const tagSettings = ref<TagSetting[]>(initialTagSettings);
+  const tagSettings = ref<TagSetting[]>([]);
+  const isLoading = ref(false);
+  const error = ref<string | null>(null);
 
-  function setTagSettings(newSettings: TagSetting[]) {
-    tagSettings.value = newSettings;
+  async function fetchTags() {
+    isLoading.value = true;
+    error.value = null;
+    try {
+      const { data, errors } = await client.models.Tag.list();
+      if (errors) {
+        throw new Error(errors[0].message);
+      }
+      tagSettings.value = data.map((tag) => ({
+        id: tag.id || '',
+        name: tag.name || '',
+        color: tag.color || '#1976d2',
+        processSettings: JSON.parse(tag.processSettings || '[]'),
+        createdBy: tag.createdBy || '',
+        createdAt: tag.createdAt || '',
+      }));
+    } catch (e) {
+      console.error('タグの取得に失敗しました:', e);
+      error.value = e instanceof Error ? e.message : 'タグの取得に失敗しました';
+    } finally {
+      isLoading.value = false;
+    }
   }
 
-  return { tagSettings, setTagSettings };
+  function setTagSettings(tags: TagSetting[]) {
+    tagSettings.value = tags;
+  }
+
+  return {
+    tagSettings,
+    isLoading,
+    error,
+    fetchTags,
+    setTagSettings,
+  };
 });

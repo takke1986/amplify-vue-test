@@ -14,10 +14,10 @@ const schema = a.schema({
       createdBy: a.string(),
       createdAt: a.string(),
       processSettings: a.string(), // JSON文字列で工程別通知設定
-      circularTags: a.hasMany('CircularTag', 'id'),
-      todoMessages: a.hasMany('TodoMessage', 'id'),
+      circularTags: a.hasMany('CircularTag', 'tagId'),
+      todoMessages: a.hasMany('TodoMessage', 'tagId'),
     })
-    .secondaryIndexes((index) => [index('createdBy')])
+    .secondaryIndexes((index) => [index('name'), index('createdBy')])
     .authorization((allow) => [allow.publicApiKey()]),
 
   Circular: a
