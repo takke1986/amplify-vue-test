@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 
 export interface DepartmentPermission {
+  id: string;
   departmentId: string; // 部署ID
   departmentName: string; // 部署名
   role: '一般' | '管理者'; // 権限
@@ -10,6 +11,7 @@ export interface DepartmentPermission {
 
 const initialPermissions: DepartmentPermission[] = [
   {
+    id: '1',
     departmentId: '2001',
     departmentName: '2部署（営業）',
     role: '管理者',
@@ -17,6 +19,7 @@ const initialPermissions: DepartmentPermission[] = [
     notificationEmails: ['admin@example.com'],
   },
   {
+    id: '2',
     departmentId: '1002',
     departmentName: '1部署（配電）',
     role: '一般',

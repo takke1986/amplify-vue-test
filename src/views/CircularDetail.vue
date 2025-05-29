@@ -1,5 +1,7 @@
 <template>
   <div class="circular-detail">
+    <GlobalMessage />
+    <!-- アラートメッセージ -->
     <div v-if="isLoading" class="loading">
       <div class="loading-spinner"></div>
       <p>読み込み中...</p>
@@ -168,6 +170,8 @@
                     borderRadius: '6px',
                     padding: '2px 10px',
                     marginRight: '6px',
+                    marginBottom: '6px',
+                    display: 'inline-block',
                     fontWeight: 600,
                   }"
                 >
@@ -182,6 +186,7 @@
                     border-radius: 6px;
                     padding: 2px 10px;
                     font-weight: 600;
+                    display: inline-block;
                   "
                   >タグなし</span
                 >
@@ -425,14 +430,14 @@ import {
   onUpdated,
 } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { processNames } from '@/mocks/mockCirculars';
 import Quill from 'quill';
 import QuillImageDropAndPaste from 'quill-image-drop-and-paste';
 import 'quill/dist/quill.snow.css';
-import { storeToRefs } from 'pinia';
-import { useTagSettingsStore } from '@/stores/tagSettings';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../../amplify/data/resource';
+import { useTagStore } from '@/stores/tagStore';
+import { useMessageStore } from '@/stores/messageStore';
+import GlobalMessage from '@/components/GlobalMessage.vue';
 
 // プラグイン登録
 Quill.register('modules/imageDropAndPaste', QuillImageDropAndPaste);
@@ -478,6 +483,7 @@ interface Circular {
   process: number;
   tags?: Tag[];
   history?: HistoryItem[];
+  version: number;
 }
 
 const route = useRoute();
@@ -680,23 +686,6 @@ const fetchCircular = async () => {
 
     const { data, errors } = await client.models.Circular.get({
       id,
-      selectionSet: [
-        'id',
-        'title',
-        'content',
-        'creator',
-        'createdAt',
-        'deadline',
-        'status',
-        'department',
-        'updatedBy',
-        'updatedAt',
-        'process',
-        'history',
-        'circulationStatus',
-        'fileLinks',
-        { circularTags: [{ tag: ['id', 'name', 'color'] }] },
-      ] as any,
     });
 
     if (errors) {
@@ -713,63 +702,33 @@ const fetchCircular = async () => {
 
     // タグ情報を取得
     try {
-      // キャッシュからタグ情報を取得
-      const cachedTags = await getFromCache(TAGS_STORE, id);
+      // CircularTagの取得
+      const { data: circularTags } = await client.models.CircularTag.list({
+        filter: {
+          circularId: { eq: id },
+        },
+      });
+
       let tags: Tag[] = [];
-
-      if (cachedTags) {
-        tags = cachedTags;
-      } else {
-        const { data: circularTags } = await client.models.CircularTag.list({
-          filter: {
-            circularId: { eq: id },
-          },
-        });
-
-        if (Array.isArray(circularTags)) {
-          for (const ct of circularTags) {
-            if (ct.tagId) {
-              const { data: tagData } = await client.models.Tag.get({
-                id: ct.tagId,
+      if (Array.isArray(circularTags)) {
+        // 各CircularTagに対応するTagを取得
+        for (const ct of circularTags) {
+          if (ct.tagId) {
+            const { data: tagData } = await client.models.Tag.get({
+              id: ct.tagId,
+            });
+            if (tagData) {
+              tags.push({
+                id: tagData.id ?? '',
+                name: tagData.name ?? '',
+                color: tagData.color ?? '#1976d2',
               });
-              if (tagData) {
-                tags.push({
-                  id: tagData.id,
-                  name: tagData.name,
-                  color: tagData.color,
-                });
-              }
             }
           }
         }
-        // タグ情報をキャッシュに保存
-        await saveToCache(TAGS_STORE, id, tags);
       }
 
-      // fileLinks(JSON文字列)を配列に
-      let files: File[] = [];
-      try {
-        files = data.fileLinks ? JSON.parse(data.fileLinks) : [];
-      } catch {
-        files = [];
-      }
-      // history(JSON文字列)を配列に
-      let history: HistoryItem[] = [];
-      try {
-        history = data.history ? JSON.parse(data.history) : [];
-      } catch {
-        history = [];
-      }
-      // circulationStatus(JSON文字列)を配列に
-      let circulationStatus: CirculationStatus[] = [];
-      try {
-        circulationStatus = data.circulationStatus
-          ? JSON.parse(data.circulationStatus)
-          : [];
-      } catch {
-        circulationStatus = [];
-      }
-
+      // 回覧箋データの構築
       const circularData: Circular = {
         id: String(data.id),
         title: String(data.title),
@@ -787,44 +746,20 @@ const fetchCircular = async () => {
         updatedAt: String(data.updatedAt),
         process: Number(data.process),
         tags,
-        files,
-        history,
-        circulationStatus,
-      };
-
-      // 回覧箋データをキャッシュに保存
-      await saveToCache(CIRCULAR_STORE, id, circularData);
-      circular.value = circularData;
-    } catch (tagError) {
-      console.error('タグ情報の取得に失敗しました:', tagError);
-      // タグ情報の取得に失敗しても、他の情報は表示する
-      const circularData: Circular = {
-        id: String(data.id),
-        title: String(data.title),
-        content: String(data.content),
-        creator: String(data.creator),
-        createdAt: String(data.createdAt),
-        deadline: String(data.deadline),
-        status: data.status as
-          | 'draft'
-          | 'in_progress'
-          | 'completed'
-          | 'expired',
-        department: String(data.department),
-        updatedBy: String(data.updatedBy),
-        updatedAt: String(data.updatedAt),
-        process: Number(data.process),
-        tags: [],
         files: data.fileLinks ? JSON.parse(data.fileLinks) : [],
         history: data.history ? JSON.parse(data.history) : [],
         circulationStatus: data.circulationStatus
           ? JSON.parse(data.circulationStatus)
           : [],
+        version: data.version || 1,
       };
 
-      // 回覧箋データをキャッシュに保存
+      // キャッシュに保存
       await saveToCache(CIRCULAR_STORE, id, circularData);
       circular.value = circularData;
+    } catch (tagError) {
+      console.error('タグ情報の取得に失敗しました:', tagError);
+      messageStore.setMessage('タグ情報の取得に失敗しました。', 'error');
     }
   } catch (error) {
     console.error('回覧箋の取得に失敗しました:', error);
@@ -866,7 +801,7 @@ const handleDelete = async () => {
 
     if (errors) {
       console.error('回覧箋の削除に失敗しました:', errors);
-      alert('回覧箋の削除に失敗しました。');
+      messageStore.setMessage('回覧箋の削除に失敗しました。', 'error');
       return;
     }
 
@@ -877,7 +812,7 @@ const handleDelete = async () => {
     router.push('/circulars');
   } catch (error) {
     console.error('回覧箋の削除に失敗しました:', error);
-    alert('回覧箋の削除に失敗しました。');
+    messageStore.setMessage('回覧箋の削除に失敗しました。', 'error');
   }
 };
 
@@ -913,85 +848,72 @@ const originalState = ref<any>(null);
 const enterEditMode = async () => {
   if (!circular.value) return;
 
-  // 現在の状態を保存
-  originalState.value = {
-    title: circular.value.title,
-    content: circular.value.content,
-    deadline: circular.value.deadline,
-    files: circular.value.files ? [...circular.value.files] : [],
-    tags: circular.value.tags ? [...circular.value.tags] : [],
-    process: circular.value.process || 1,
-    departments: circular.value.circulationStatus.map((cs) => cs.departmentId),
-  };
+  try {
+    // 現在の状態を保存
+    originalState.value = {
+      title: circular.value.title,
+      content: circular.value.content,
+      deadline: circular.value.deadline,
+      files: circular.value.files ? [...circular.value.files] : [],
+      tags: circular.value.tags ? [...circular.value.tags] : [],
+      process: circular.value.process || 1,
+      departments: circular.value.circulationStatus.map(
+        (cs) => cs.departmentId
+      ),
+    };
 
-  isEditMode.value = true;
-  // 編集用フォームに値をコピー
-  editForm.value.title = circular.value.title;
-  editForm.value.content = circular.value.content;
-  editForm.value.deadline = circular.value.deadline;
-  editForm.value.files = circular.value.files ? [...circular.value.files] : [];
-  // タグの初期化を修正
-  editForm.value.tags = circular.value.tags
-    ? circular.value.tags.map((tag) => ({
-        id: tag.id,
-        name: tag.name,
-        color: tag.color,
-      }))
-    : [];
-  editForm.value.process = circular.value.process || 1;
-  editForm.value.departments = circular.value.circulationStatus.map(
-    (cs) => cs.departmentId
-  );
+    isEditMode.value = true;
 
-  await nextTick();
-  quill = new Quill('#editor-container', {
-    modules: {
-      toolbar: [
-        ['bold', 'italic', 'underline', 'strike'],
-        ['blockquote', 'code-block'],
-        [{ list: 'ordered' }, { list: 'bullet' }],
-        [{ script: 'sub' }, { script: 'super' }],
-        [{ indent: '-1' }, { indent: '+1' }],
-        [{ direction: 'rtl' }],
-        [{ size: ['small', false, 'large', 'huge'] }],
-        [{ color: [] }, { background: [] }],
-        [{ font: [] }],
-        [{ align: [] }],
-        ['link', 'image'],
-        ['clean'],
-      ],
-      imageDropAndPaste: true,
-    },
-    placeholder:
-      '本文を入力、画像は貼り付け・ドラッグ＆ドロップ・画像ボタンで挿入できます',
-    readOnly: false,
-    theme: 'snow',
-  });
-  quill.root.innerHTML = editForm.value.content;
-  quill.on('text-change', () => {
-    editForm.value.content = quill!.root.innerHTML;
-  });
+    // 編集用フォームに値をコピー
+    editForm.value = {
+      title: circular.value.title,
+      content: circular.value.content,
+      deadline: circular.value.deadline,
+      files: circular.value.files ? [...circular.value.files] : [],
+      tags: circular.value.tags ? [...circular.value.tags] : [],
+      process: circular.value.process || 1,
+      departments: circular.value.circulationStatus.map(
+        (cs) => cs.departmentId
+      ),
+      selectedDepartment: '',
+      editComment: '',
+    };
+
+    await nextTick();
+    quill = new Quill('#editor-container', {
+      modules: {
+        toolbar: [
+          ['bold', 'italic', 'underline', 'strike'],
+          ['blockquote', 'code-block'],
+          [{ list: 'ordered' }, { list: 'bullet' }],
+          [{ script: 'sub' }, { script: 'super' }],
+          [{ indent: '-1' }, { indent: '+1' }],
+          [{ direction: 'rtl' }],
+          [{ size: ['small', false, 'large', 'huge'] }],
+          [{ color: [] }, { background: [] }],
+          [{ font: [] }],
+          [{ align: [] }],
+          ['link', 'image'],
+          ['clean'],
+        ],
+        imageDropAndPaste: true,
+      },
+      placeholder:
+        '本文を入力、画像は貼り付け・ドラッグ＆ドロップ・画像ボタンで挿入できます',
+      readOnly: false,
+      theme: 'snow',
+    });
+    quill.root.innerHTML = editForm.value.content;
+    quill.on('text-change', () => {
+      editForm.value.content = quill!.root.innerHTML;
+    });
+  } catch (error) {
+    console.error('編集モードの初期化に失敗しました:', error);
+    messageStore.setMessage('編集モードの初期化に失敗しました。', 'error');
+  }
 };
 
 const editError = ref('');
-
-// 新規作成時のキャッシュ保存
-const saveNewCircularToCache = async (circularData: Circular) => {
-  try {
-    // 回覧箋データをキャッシュに保存
-    await saveToCache(CIRCULAR_STORE, circularData.id, circularData);
-
-    // タグ情報をキャッシュに保存
-    if (circularData.tags && circularData.tags.length > 0) {
-      await saveToCache(TAGS_STORE, circularData.id, circularData.tags);
-    }
-
-    return true;
-  } catch (error) {
-    console.error('新規回覧箋のキャッシュ保存に失敗しました:', error);
-    return false;
-  }
-};
 
 // 更新時のキャッシュ保存
 const updateCircularInCache = async (circularData: Circular) => {
@@ -1041,7 +963,35 @@ const handleEditSubmit = async () => {
         currentUser?.value?.username ||
         '未取得',
       updatedAt: new Date().toISOString(),
+      version: circular.value.version,
     };
+
+    // タグ差分計算
+    const beforeTagIds = (circular.value.tags || []).map((t) => t.id);
+    const afterTagIds = (editForm.value.tags || []).map((t) => t.id);
+    const addTagIds = afterTagIds.filter((id) => !beforeTagIds.includes(id));
+    const removeTagIds = beforeTagIds.filter((id) => !afterTagIds.includes(id));
+
+    // CircularTag追加
+    for (const tagId of addTagIds) {
+      await client.models.CircularTag.create({
+        circularId: circular.value.id,
+        tagId,
+      });
+    }
+    // CircularTag削除
+    if (removeTagIds.length > 0) {
+      // 現在のCircularTagを取得
+      const { data: circularTags } = await client.models.CircularTag.list({
+        filter: { circularId: { eq: circular.value.id } },
+      });
+      for (const tagId of removeTagIds) {
+        const target = (circularTags || []).find((ct) => ct.tagId === tagId);
+        if (target && target.id) {
+          await client.models.CircularTag.delete({ id: target.id });
+        }
+      }
+    }
 
     // 履歴追加
     let history = circular.value.history || [];
@@ -1050,6 +1000,25 @@ const handleEditSubmit = async () => {
       const from = processNames[prevProcess];
       const to = processNames[editForm.value.process];
       comment = `工程を${from}→${to}に変更` + (comment ? `／${comment}` : '');
+
+      // 工程変更時にNotificationを作成
+      const { errors: notificationErrors } =
+        await client.models.Notification.create({
+          circularId: circular.value.id || '',
+          status: 'pending',
+          statusText: '未対応',
+          changeDescription: `工程を${from}工程から${to}工程に変更`,
+          actionRequired: '',
+          assignee: kairanSakiId.value || '',
+          dueDate: editForm.value.deadline,
+          statusChangedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+
+      if (notificationErrors) {
+        console.error('通知の作成に失敗しました:', notificationErrors);
+      }
     }
     history.push({
       date: new Date().toISOString(),
@@ -1062,7 +1031,7 @@ const handleEditSubmit = async () => {
     });
 
     // 回覧先（自動決定）を反映
-    const circulationStatus = [
+    const circulationStatus: CirculationStatus[] = [
       {
         departmentId: kairanSakiId.value,
         status: 'pending',
@@ -1070,144 +1039,76 @@ const handleEditSubmit = async () => {
       },
     ];
 
-    const { errors } = await client.models.Circular.update({
-      id: updateData.id,
-      title: updateData.title,
-      content: updateData.content,
-      deadline: updateData.deadline,
-      process: updateData.process,
-      updatedBy: updateData.updatedBy,
-      updatedAt: updateData.updatedAt,
-      history: JSON.stringify(history),
-      circulationStatus: JSON.stringify(circulationStatus),
-    });
+    try {
+      const { errors } = await client.models.Circular.update({
+        id: updateData.id,
+        title: updateData.title,
+        content: updateData.content,
+        deadline: updateData.deadline,
+        process: updateData.process,
+        updatedBy: updateData.updatedBy,
+        updatedAt: updateData.updatedAt,
+        history: JSON.stringify(history),
+        circulationStatus: JSON.stringify(circulationStatus),
+        version: updateData.version,
+        fileLinks: JSON.stringify(editForm.value.files || []),
+        status: circular.value.status,
+        department: circular.value.department,
+        creator: circular.value.creator,
+        createdAt: circular.value.createdAt,
+      });
 
-    if (errors) {
-      console.error('回覧箋の更新に失敗しました:', errors);
-      editError.value = '回覧箋の更新に失敗しました。';
-      return;
-    }
-
-    // タグの更新
-    // 1. 既存のCircularTagを取得
-    const { data: existingCircularTags } = await client.models.CircularTag.list(
-      {
-        filter: {
-          circularId: { eq: circular.value.id },
-        },
-      }
-    );
-
-    // 2. 既存のタグを削除
-    if (existingCircularTags) {
-      for (const circularTag of existingCircularTags) {
-        await client.models.CircularTag.delete({ id: circularTag.id });
-      }
-    }
-
-    // 3. 新しいタグを作成
-    if (editForm.value.tags && editForm.value.tags.length > 0) {
-      for (const tag of editForm.value.tags) {
-        const tagData = tagSettings.value.find((t) => t.name === tag.name);
-        if (tagData) {
-          await client.models.CircularTag.create({
-            circularId: circular.value.id,
-            tagId: tagData.id,
-          });
+      if (errors) {
+        if (errors.some((e) => e.message?.includes('version conflict'))) {
+          messageStore.setMessage(
+            '他のユーザーが同時に編集を行いました。最新の情報を取得してから再度編集してください。',
+            'error'
+          );
+          await fetchCircular();
+          return;
         }
+        console.error('回覧箋の更新に失敗しました:', errors);
+        messageStore.setMessage('回覧箋の更新に失敗しました。', 'error');
+        return;
       }
+
+      // 更新成功時のメッセージ
+      messageStore.setMessage(
+        `識別番号: ${updateData.id} を更新しました`,
+        'success'
+      );
+
+      // 更新されたデータをキャッシュに保存
+      const updatedCircularData: Circular = {
+        ...circular.value,
+        title: updateData.title,
+        content: updateData.content,
+        deadline: updateData.deadline,
+        process: updateData.process,
+        updatedBy: updateData.updatedBy,
+        updatedAt: updateData.updatedAt,
+        history,
+        circulationStatus,
+        files: editForm.value.files || [],
+        version: updateData.version + 1,
+        tags: editForm.value.tags || [],
+      };
+
+      await updateCircularInCache(updatedCircularData);
+
+      // タグストアも再取得
+      await tagStore.fetchTagsWithCache();
+
+      // 更新成功後、回覧箋の情報を再取得
+      await fetchCircular();
+      isEditMode.value = false;
+    } catch (error) {
+      console.error('回覧箋の更新に失敗しました:', error);
+      messageStore.setMessage('回覧箋の更新に失敗しました。', 'error');
     }
-
-    // 更新されたデータをキャッシュに保存
-    const updatedCircularData: Circular = {
-      ...circular.value,
-      title: updateData.title,
-      content: updateData.content,
-      deadline: updateData.deadline,
-      process: updateData.process,
-      updatedBy: updateData.updatedBy,
-      updatedAt: updateData.updatedAt,
-      history,
-      circulationStatus,
-      tags: editForm.value.tags || [],
-    };
-
-    await updateCircularInCache(updatedCircularData);
-
-    // 更新成功後、回覧箋の情報を再取得
-    await fetchCircular();
-    isEditMode.value = false;
   } catch (error) {
     console.error('回覧箋の更新に失敗しました:', error);
-    editError.value = '回覧箋の更新に失敗しました。';
-  }
-};
-
-// 新規作成時の処理
-const handleCreate = async (circularData: Circular) => {
-  try {
-    // APIで新規作成
-    const { data, errors } = await client.models.Circular.create({
-      title: circularData.title,
-      content: circularData.content,
-      deadline: circularData.deadline,
-      process: circularData.process,
-      creator:
-        currentUser?.value?.displayname ||
-        currentUser?.value?.username ||
-        '未取得',
-      createdAt: new Date().toISOString(),
-      updatedBy:
-        currentUser?.value?.displayname ||
-        currentUser?.value?.username ||
-        '未取得',
-      updatedAt: new Date().toISOString(),
-      department: circularData.department,
-      status: 'draft',
-      history: JSON.stringify([
-        {
-          date: new Date().toISOString(),
-          user:
-            currentUser?.value?.displayname ||
-            currentUser?.value?.username ||
-            '未取得',
-          action: '作成',
-          comment: '',
-        },
-      ]),
-      circulationStatus: JSON.stringify([
-        {
-          departmentId: kairanSakiId.value,
-          status: 'pending',
-          comment: '',
-        },
-      ]),
-    });
-
-    if (errors) {
-      console.error('回覧箋の作成に失敗しました:', errors);
-      return null;
-    }
-
-    if (!data) {
-      console.error('回覧箋の作成に失敗しました: データが返されませんでした');
-      return null;
-    }
-
-    // 作成されたデータをキャッシュに保存
-    const newCircularData: Circular = {
-      ...circularData,
-      id: data.id,
-      createdAt: data.createdAt,
-      updatedAt: data.updatedAt,
-    };
-
-    await saveNewCircularToCache(newCircularData);
-
-    return newCircularData;
-  } catch (error) {
-    console.error('回覧箋の作成に失敗しました:', error);
-    return null;
+    messageStore.setMessage('回覧箋の更新に失敗しました。', 'error');
   }
 };
 
@@ -1251,7 +1152,7 @@ const cancelEdit = () => {
 // タグ選択用
 function toggleTag(tagName: string) {
   if (!editForm.value.tags) editForm.value.tags = [];
-  const tag = tagSettings.value.find((t) => t.name === tagName);
+  const tag = tagStore.getTags.find((t) => t.name === tagName);
   if (tag && tag.name) {
     // タグ名が存在する場合のみ処理
     const idx = editForm.value.tags.findIndex((t) => t.name === tagName);
@@ -1273,7 +1174,7 @@ function isTagSelected(tagName: string) {
 
 // 有効なタグのみをフィルタリング
 const validTags = computed(() => {
-  return tagSettings.value.filter((tag) => tag.name && tag.name.trim() !== '');
+  return tagStore.getTags.filter((tag) => (tag.name ?? '').trim() !== '');
 });
 
 // 履歴コメントの工程部分をバッジ化
@@ -1360,8 +1261,7 @@ onUpdated(() => {
   bindImageClickEvent();
 });
 
-const tagSettingsStore = useTagSettingsStore();
-const { tagSettings } = storeToRefs(tagSettingsStore);
+const tagStore = useTagStore();
 
 // 編集画面のURLリンク入力欄を修正
 const editUrlNameInput = ref('');
@@ -1391,7 +1291,7 @@ function addEditUrlLink() {
 }
 function copyToClipboard(url: string) {
   navigator.clipboard.writeText(url).then(() => {
-    alert('リンクをコピーしました');
+    messageStore.setMessage('リンクをコピーしました', 'success');
   });
 }
 function removeUrlLink(idx: number) {
@@ -1400,13 +1300,27 @@ function removeUrlLink(idx: number) {
   }
 }
 
-// タグの初期化
-onMounted(async () => {
-  await tagSettingsStore.fetchTags();
-  await fetchCircular();
-  window.addEventListener('scroll', handleScrollGuide);
-  bindImageClickEvent();
-});
+const messageStore = useMessageStore();
+
+// TagSettingsView.vueと同じ工程名リスト
+const processNames = [
+  '', // インデックス0用の空要素
+  '起案',
+  '確認',
+  '承認',
+  '決裁',
+  '配布',
+  '受領',
+  '処理',
+  '完了',
+  '保管',
+  '回収',
+  '再確認',
+  '再承認',
+  '再決裁',
+  '変更承認',
+  '最終完了',
+];
 </script>
 
 <style scoped>
@@ -1605,7 +1519,7 @@ label,
 }
 .loading-spinner {
   border: 4px solid #f3f3f3;
-  border-top: 4px solid #0078d4;
+  border-top: 4px solid #1976d2;
   border-radius: 50%;
   width: 40px;
   height: 40px;
@@ -1698,130 +1612,218 @@ label,
   opacity: 1;
   box-shadow: 0 0 0 2px #1976d2;
 }
+.process-visual {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  margin-bottom: 20px;
+}
+
 .process-header {
   display: flex;
-  align-items: baseline;
-  margin-bottom: 4px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #e3f2fd;
+  border-radius: 8px;
+  border-left: 4px solid #1976d2;
 }
+
 .process-name {
-  font-weight: 600;
-  color: #444;
-  background: #f5f5f5;
-  padding: 10px 10px;
-  border-radius: 4px;
-  font-size: 2em;
-  margin-left: 4px;
+  font-weight: 700;
+  color: #1976d2;
+  font-size: 1.2em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+
+.process-name::before {
+  content: '現在の工程';
+  font-size: 0.8em;
+  background: #1976d2;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
 .process-steps-container {
-  margin-top: 20px;
-  margin-bottom: 30px;
+  margin-top: 24px;
+  padding: 0 16px;
+}
+
+.process-steps-names {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+  padding-bottom: 32px;
+}
+
+.process-step-block {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-}
-.process-steps {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: left;
+  align-items: center;
   position: relative;
-  gap: 6px;
+  width: 60px;
 }
+
 .process-step {
-  width: 15px;
-  height: 15px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: #e0e0e0;
   position: relative;
   border: 2px solid #fff;
   box-shadow: 0 0 0 1px #ddd;
+  transition: all 0.3s ease;
+  z-index: 2;
 }
+
 .process-step-active {
   background: #4caf50;
   box-shadow: 0 0 0 1px #4caf50;
 }
+
 .process-step-current {
   background: #1976d2;
   box-shadow: 0 0 0 1px #1976d2;
+  transform: scale(1.2);
   animation: pulse 1.5s infinite;
 }
+
+.process-step-label {
+  position: absolute;
+  bottom: -38px;
+  font-size: 0.95em;
+  color: #757575;
+  text-align: center;
+  width: 80px;
+  min-width: 60px;
+  max-width: 90px;
+  padding: 4px 2px;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.2;
+  z-index: 2;
+}
+
+.current-label {
+  color: #1976d2;
+  font-weight: 700;
+  background: #e3f2fd;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transform: translateY(-4px);
+  z-index: 3;
+}
+
+.process-step-connector {
+  flex: 1;
+  height: 2px;
+  background: #e0e0e0;
+  position: relative;
+  margin: 0;
+  z-index: 1;
+}
+
+.process-step-connector::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #e0e0e0;
+  transform: translateY(-50%);
+}
+
+.process-step-active + .process-step-connector::after {
+  background: #4caf50;
+}
+
 @keyframes pulse {
   0% {
     box-shadow: 0 0 0 0 rgba(25, 118, 210, 0.4);
   }
   70% {
-    box-shadow: 0 0 0 6px rgba(25, 118, 210, 0);
+    box-shadow: 0 0 0 8px rgba(25, 118, 210, 0);
   }
   100% {
     box-shadow: 0 0 0 0 rgba(25, 118, 210, 0);
   }
 }
-.process-steps-names {
+
+/* アラートのスタイル */
+.alert {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 1rem 2rem;
+  border-radius: 8px;
   display: flex;
-  flex-direction: row;
-  gap: 0px;
-  justify-content: flex-start;
-  align-items: flex-end;
-  margin-bottom: 10px;
-}
-.process-step-block {
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  width: 48px;
-  position: relative;
+  justify-content: space-between;
+  min-width: 300px;
+  max-width: 500px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  animation: slideIn 0.3s ease-out;
 }
-.process-step-connector {
-  width: 32px;
-  height: 0;
-  border-bottom: 2px dashed #bbb;
-  align-self: center;
-  margin-bottom: 18px;
+
+.alert.success {
+  background-color: #e8f5e9;
+  border-left: 4px solid #2e7d32;
+  color: #1b5e20;
 }
-.process-step-label {
-  font-size: 0.85em;
-  color: #888;
-  margin-top: 2px;
-  white-space: nowrap;
-  text-align: center;
-  max-width: 48px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+
+.alert.error {
+  background-color: #ffebee;
+  border-left: 4px solid #c62828;
+  color: #b71c1c;
 }
-.current-label {
-  color: #1976d2;
-  font-weight: bold;
-  background: #e3f2fd;
-  border-radius: 6px;
-  padding: 0 4px;
+
+.alert.info {
+  background-color: #e3f2fd;
+  border-left: 4px solid #1976d2;
+  color: #0d47a1;
 }
-.process-step-current {
-  background: #1976d2 !important;
-  box-shadow: 0 0 0 1px #1976d2;
+
+.alert-message {
+  font-size: 16pt;
+  font-weight: 500;
+  margin-right: 1rem;
 }
-.process-select-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-.process-btn {
-  background: #f5f5f5;
-  color: #1976d2;
-  border: 1.5px solid #bdbdbd;
-  border-radius: 6px;
-  padding: 0.5em 1.2em;
-  font-size: 1em;
-  font-weight: 600;
+
+.alert-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: inherit;
   cursor: pointer;
-  transition: background 0.2s, color 0.2s, border 0.2s;
+  padding: 0;
+  opacity: 0.7;
+  transition: opacity 0.2s;
 }
-.process-btn.selected {
-  background: #1976d2;
-  color: #fff;
-  border: 2px solid #1976d2;
+
+.alert-close:hover {
+  opacity: 1;
 }
-.process-btn:hover {
-  background: #e3f2fd;
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 </style>
 
@@ -1891,7 +1893,7 @@ label,
   margin-top: 1rem;
 }
 .history-card {
-  background: #f9fafb;
+  background: #f5f5f5;
   border-radius: 8px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
   padding: 1rem 1.5rem;
@@ -1915,30 +1917,26 @@ label,
   font-weight: 600;
 }
 .history-user-badge {
-  background: #fffde7;
-  color: #bfa100;
+  background: #ff9800;
+  color: #fff;
   border-radius: 4px;
-  padding: 2px 10px;
+  padding: 2px 8px;
   font-size: 0.95em;
   font-weight: 600;
 }
 .history-action-badge {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: #2e7d32;
+  color: #fff;
+  padding: 2px 8px;
   border-radius: 4px;
-  padding: 2px 10px;
   font-size: 0.95em;
   font-weight: 600;
 }
 .history-comment-bubble {
   background: #fff;
-  border: 1.5px solid #bdbdbd;
-  border-radius: 8px;
-  padding: 0.7em 1em;
-  margin-top: 0.3em;
-  color: #333;
-  font-size: 1em;
-  position: relative;
+  padding: 10px;
+  border-radius: 6px;
+  margin-top: 10px;
 }
 .history-comment-bubble:before {
   content: '';
@@ -2104,5 +2102,39 @@ label,
 }
 .image-modal-close:hover {
   background: #eee;
+}
+</style>
+
+<style>
+.process-select-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.process-btn {
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 0.4em 1.2em;
+  font-size: 1em;
+  font-weight: 600;
+  cursor: pointer;
+  background: white;
+  color: #424242;
+  transition: all 0.2s;
+}
+
+.process-btn:hover {
+  border-color: #1976d2;
+  background: #f5f5f5;
+  transform: translateY(-1px);
+}
+
+.process-btn.selected {
+  background: #1976d2;
+  color: white;
+  border-color: #1976d2;
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.2);
 }
 </style>

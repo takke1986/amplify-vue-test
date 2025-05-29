@@ -1,5 +1,6 @@
 <template>
   <div>
+    <GlobalMessage />
     <div
       v-if="currentUser && currentUser.value === null"
       class="loading-message"
@@ -199,9 +200,6 @@ import {
   onMounted,
   onUnmounted,
 } from 'vue';
-import { processNames } from '@/mocks/mockCirculars';
-import { storeToRefs } from 'pinia';
-import { useTagSettingsStore } from '@/stores/tagSettings';
 import Quill from 'quill';
 import QuillImageDropAndPaste from 'quill-image-drop-and-paste';
 import 'quill/dist/quill.snow.css';
@@ -211,6 +209,7 @@ import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../../amplify/data/resource';
 import { useRouter } from 'vue-router';
 import { useTagStore } from '@/stores/tagStore';
+import GlobalMessage from '@/components/GlobalMessage.vue';
 
 Quill.register('modules/imageDropAndPaste', QuillImageDropAndPaste);
 
@@ -464,7 +463,7 @@ const closeConfirmModal = () => {
 const confirmSubmit = async () => {
   try {
     // 回覧箋を作成
-    const { data: circular } = await client.models.Circular.create({
+    const { data: circular, errors } = await client.models.Circular.create({
       title: title.value,
       content: bodyHtml.value,
       creator:
@@ -485,7 +484,22 @@ const confirmSubmit = async () => {
         '未取得',
       updatedAt: new Date().toISOString(),
       history: JSON.stringify([]),
+      version: 1, // 新規作成時はバージョン1から開始
     });
+
+    if (errors) {
+      console.error('回覧箋の作成に失敗しました:', errors);
+      error.value = '回覧箋の作成に失敗しました。';
+      closeConfirmModal();
+      return;
+    }
+
+    if (!circular) {
+      console.error('回覧箋の作成に失敗しました: データが返されませんでした');
+      error.value = '回覧箋の作成に失敗しました。';
+      closeConfirmModal();
+      return;
+    }
 
     // タグを作成
     if (circular && selectedTags.value.length > 0) {
@@ -503,7 +517,8 @@ const confirmSubmit = async () => {
     // 完了後リスト画面へ遷移
     router.push('/circulars');
   } catch (e) {
-    error.value = '登録に失敗しました';
+    console.error('回覧箋の作成に失敗しました:', e);
+    error.value = '回覧箋の作成に失敗しました。';
     closeConfirmModal();
   }
 };
@@ -707,6 +722,26 @@ interface FileLink {
   name: string;
   url: string;
 }
+
+// TagSettingsView.vueと同じ工程名リスト
+const processNames = [
+  '', // インデックス0用の空要素
+  '起案',
+  '確認',
+  '承認',
+  '決裁',
+  '配布',
+  '受領',
+  '処理',
+  '完了',
+  '保管',
+  '回収',
+  '再確認',
+  '再承認',
+  '再決裁',
+  '変更承認',
+  '最終完了',
+];
 </script>
 
 <style scoped>
@@ -791,7 +826,7 @@ label {
   gap: 1rem;
 }
 .btn-submit {
-  background: #0078d4;
+  background: #1976d2;
   color: #fff;
   border: none;
   padding: 0.85rem 2.2rem;
@@ -799,12 +834,12 @@ label {
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 120, 212, 0.08);
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.08);
   transition: background 0.2s, box-shadow 0.2s;
 }
 .btn-submit:hover {
-  background: #005fa3;
-  box-shadow: 0 4px 16px rgba(0, 120, 212, 0.15);
+  background: #1565c0;
+  box-shadow: 0 4px 16px rgba(25, 118, 210, 0.15);
 }
 .error-message {
   color: #e53935;
@@ -813,10 +848,10 @@ label {
 }
 /* 追加: ボタンのバリエーション */
 .btn-primary {
-  background: #0078d4;
+  background: #1976d2;
 }
 .btn-primary:hover {
-  background: #005fa3;
+  background: #1565c0;
 }
 .btn-secondary {
   background: #bdbdbd;
@@ -883,7 +918,7 @@ label {
   margin-top: 0.5rem;
 }
 .modal-close:hover {
-  background: #005fa3;
+  background: #1565c0;
 }
 .url-link-input-group {
   display: flex;
@@ -906,7 +941,7 @@ label {
   cursor: pointer;
 }
 .btn-add-url:hover {
-  background: #005fa3;
+  background: #1565c0;
 }
 .url-link-list {
   list-style: none;

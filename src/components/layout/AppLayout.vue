@@ -23,6 +23,7 @@ export default defineComponent({
   setup() {
     const isSigningOut = ref(false);
     const errorMessage = ref('');
+    const isAuthLoading = ref(true);
     const currentUser = ref<{
       displayname: string;
       busho: string | number | boolean | JsonObject | JsonArray;
@@ -116,6 +117,8 @@ export default defineComponent({
         console.error('ユーザー情報の取得に失敗しました:', error);
         errorMessage.value =
           'ユーザー情報の取得に失敗しました。もう一度お試しください。';
+      } finally {
+        isAuthLoading.value = false;
       }
     };
 
@@ -135,15 +138,20 @@ export default defineComponent({
       currentUser,
       bushoName,
       isAdmin,
+      isAuthLoading,
     };
   },
 });
 </script>
 
 <template>
-  <div class="app-layout">
+  <div
+    v-if="isAuthLoading"
+    style="width: 100vw; height: 100vh; background: #fff"
+  ></div>
+  <div v-else class="app-layout">
     <header class="header">
-      <div class="logo">回覧箋システム</div>
+      <div class="logo">電設工程管理システム</div>
       <div class="user-info">
         <div class="user-details">
           <span class="username"
@@ -196,6 +204,7 @@ export default defineComponent({
   flex-direction: column;
   padding-top: 64px;
   box-sizing: border-box;
+  background-color: #fff;
 }
 
 .header {
@@ -203,18 +212,19 @@ export default defineComponent({
   justify-content: space-between;
   align-items: center;
   padding: 1rem 2rem;
-  background-color: #fff;
+  background-color: #ffffff;
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 1000;
   height: 64px;
+  border-bottom: 1px solid #9e9e9e;
 }
 
 .logo {
   margin: 0;
-  color: #333;
+  color: #424242;
   font-size: 1.5rem;
   font-weight: 600;
 }
@@ -234,13 +244,13 @@ export default defineComponent({
 
 .username {
   font-weight: 500;
-  color: #333;
+  color: #424242;
   font-size: 1rem;
 }
 
 .department {
   font-size: 0.875rem;
-  color: #666;
+  color: #9e9e9e;
 }
 
 .btn-signout {
@@ -248,7 +258,7 @@ export default defineComponent({
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  background-color: #0078d4;
+  background-color: #1976d2;
   color: white;
   border: none;
   border-radius: 4px;
@@ -260,7 +270,7 @@ export default defineComponent({
 }
 
 .btn-signout:hover:not(:disabled) {
-  background-color: #106ebe;
+  background-color: #1565c0;
 }
 
 .btn-signout:disabled {
@@ -271,20 +281,20 @@ export default defineComponent({
 .main-content {
   display: block;
   margin-top: 0;
-  margin-left: 250px; /* サイドバー分ずらす */
+  margin-left: 250px;
   width: calc(100vw - 250px);
   height: calc(100vh - 64px);
-  background: #fff;
+  background: #ffffff;
 }
 
 .sidebar {
   position: fixed;
-  top: 64px; /* ヘッダー分下げる */
+  top: 64px;
   left: 0;
   width: 250px;
   height: calc(100vh - 64px);
-  background-color: #fff;
-  border-right: 1px solid #e5e5e5;
+  background-color: #ffffff;
+  border-right: 1px solid #9e9e9e;
   padding: 1rem 0;
   overflow-y: auto;
   z-index: 100;
@@ -300,7 +310,7 @@ export default defineComponent({
 .nav-item {
   display: block;
   padding: 0.75rem 1.5rem;
-  color: #333;
+  color: #424242;
   text-decoration: none;
   transition: all 0.2s;
   border-radius: 4px;
@@ -312,9 +322,9 @@ export default defineComponent({
 }
 
 .nav-item.router-link-exact-active {
-  background-color: #e5f1fb;
-  color: #0078d4;
-  border-left: 3px solid #0078d4;
+  background-color: #e3f2fd;
+  color: #1976d2;
+  border-left: 3px solid #1976d2;
 }
 
 .content {
@@ -326,11 +336,11 @@ export default defineComponent({
   flex-direction: column;
   width: 100%;
   min-height: 100%;
-  background: #fff;
+  background: #ffffff;
 }
 
 .content-wrapper {
-  background: #fff;
+  background: #ffffff;
   border-radius: 0;
   box-shadow: none;
   padding: 2.5rem 2rem;
@@ -353,10 +363,10 @@ export default defineComponent({
 .error-message {
   margin-top: 1rem;
   padding: 0.75rem;
-  background-color: #fee2e2;
-  border: 1px solid #fecaca;
+  background-color: #ffebee;
+  border: 1px solid #ffcdd2;
   border-radius: 4px;
-  color: #dc2626;
+  color: #c62828;
   max-width: 1200px;
   margin: 1rem auto;
   white-space: pre-wrap;
@@ -366,8 +376,8 @@ export default defineComponent({
 .loading-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid #f3f3f3;
-  border-top: 2px solid #3498db;
+  border: 2px solid #f5f5f5;
+  border-top: 2px solid #1976d2;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }

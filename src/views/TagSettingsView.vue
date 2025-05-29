@@ -1,18 +1,23 @@
 <template>
   <div class="tag-settings-view">
-    <h1>タグ設定</h1>
-    <button class="add-btn" @click="addTagSetting">タグ追加</button>
+    <GlobalMessage />
+    <h1>
+      タグ設定
+      <button class="add-btn" @click="addTagSetting">タグ追加</button>
+    </h1>
     <table class="tag-table">
       <thead>
         <tr>
           <th>タグ名</th>
           <th>作成部署</th>
           <th>作成日</th>
+          <th>更新者</th>
+          <th>更新日</th>
           <th class="actions-header">操作</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(tag, idx) in tagSettings" :key="tag.name + idx">
+        <tr v-for="(tag, idx) in sortedTagSettings" :key="tag.name + idx">
           <td>
             <span
               class="tag-badge"
@@ -25,6 +30,14 @@
             {{
               tag.createdAt
                 ? new Date(tag.createdAt).toLocaleString('ja-JP')
+                : ''
+            }}
+          </td>
+          <td>{{ tag.updatedBy || '不明' }}</td>
+          <td>
+            {{
+              tag.updatedAt
+                ? new Date(tag.updatedAt).toLocaleDateString('ja-JP')
                 : ''
             }}
           </td>
@@ -68,7 +81,7 @@
             <tr>
               <th>工程名</th>
               <th>メール通知</th>
-              <th>Todo通知文言</th>
+              <th>ステータス変更通知文言</th>
             </tr>
           </thead>
           <tbody>
@@ -161,13 +174,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, inject, onMounted } from 'vue';
+import { ref, reactive, inject, onMounted, computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useTagSettingsStore } from '@/stores/tagSettings';
 import { useTagStore } from '@/stores/tagStore';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../../amplify/data/resource';
 import { v4 as uuidv4 } from 'uuid';
+import GlobalMessage from '@/components/GlobalMessage.vue';
 
 const tagSettingsStore = useTagSettingsStore();
 const { tagSettings } = storeToRefs(tagSettingsStore);
@@ -191,6 +205,8 @@ const processNames = [
   '再確認',
   '再承認',
   '再決裁',
+  '変更承認',
+  '完了',
 ];
 
 interface ProcessSetting {
@@ -206,6 +222,8 @@ interface TagSetting {
   processSettings: ProcessSetting[];
   createdBy?: string;
   createdAt?: string;
+  updatedBy?: string;
+  updatedAt?: string;
 }
 
 const client = generateClient<Schema>();
@@ -269,6 +287,9 @@ const closeDeleteModal = () => {
 
 // タグ追加
 async function addTagSetting() {
+  const now = new Date().toISOString();
+  const user = currentUser?.value?.busho || '不明';
+  const userName = currentUser?.value?.displayname || '不明';
   const newTag = {
     id: uuidv4(),
     name: '',
@@ -278,8 +299,10 @@ async function addTagSetting() {
       mailNotify: false,
       todoMessages: [],
     })),
-    createdBy: currentUser?.value?.busho || '不明',
-    createdAt: new Date().toISOString(),
+    createdBy: user,
+    createdAt: now,
+    updatedBy: userName,
+    updatedAt: now,
   };
 
   try {
@@ -302,6 +325,8 @@ async function addTagSetting() {
       color: newTag.color,
       createdBy: newTag.createdBy,
       createdAt: newTag.createdAt,
+      updatedBy: newTag.updatedBy,
+      updatedAt: newTag.updatedAt,
       processSettings: JSON.stringify(newTag.processSettings),
     });
 
@@ -336,6 +361,8 @@ const editingTag = reactive<TagSetting>({
   processSettings: [],
   createdBy: '',
   createdAt: '',
+  updatedBy: '',
+  updatedAt: '',
 });
 
 // 削除確認モーダル用の状態
@@ -390,6 +417,8 @@ async function saveProcessSettings() {
           'processSettings',
           'createdBy',
           'createdAt',
+          'updatedBy',
+          'updatedAt',
         ],
       });
 
@@ -407,6 +436,8 @@ async function saveProcessSettings() {
         color: editingTag.color,
         createdBy: editingTag.createdBy,
         createdAt: editingTag.createdAt,
+        updatedBy: currentUser?.value?.displayname || '不明',
+        updatedAt: new Date().toISOString(),
         processSettings: JSON.stringify(editingTag.processSettings),
       };
 
@@ -422,17 +453,28 @@ async function saveProcessSettings() {
       // 更新成功後、両方のストアを更新
       await Promise.all([tagStore.refreshTags(), tagSettingsStore.fetchTags()]);
 
-      // ローカルの状態を更新
-      const newArr = [...tagSettings.value];
-      newArr[editingTagIdx.value] = JSON.parse(JSON.stringify(editingTag));
-      tagSettingsStore.setTagSettings(newArr);
-
       showModal.value = false;
     } catch (e) {
       console.error('Tag更新失敗', e);
     }
   }
 }
+
+// 更新日（updatedAt）降順でソートし、未設定タグは一番下に
+const sortedTagSettings = computed(() => {
+  const normalTags = tagSettings.value.filter(
+    (tag) => tag.name && tag.name !== '未設定'
+  );
+  const unsetTags = tagSettings.value.filter(
+    (tag) => !tag.name || tag.name === '未設定'
+  );
+  normalTags.sort((a, b) => {
+    const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return bTime - aTime;
+  });
+  return [...normalTags, ...unsetTags];
+});
 </script>
 
 <style scoped>
@@ -443,8 +485,18 @@ async function saveProcessSettings() {
   background: #fff;
   min-height: 100vh;
 }
+
+.tag-settings-view h1 {
+  margin-bottom: 1.2rem;
+  font-size: 2rem;
+  color: #424242;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .add-btn {
-  margin-bottom: 1rem;
   padding: 8px 24px;
   background: #1976d2;
   color: #fff;
@@ -458,8 +510,9 @@ async function saveProcessSettings() {
   transition: background 0.2s;
 }
 .add-btn:hover {
-  background: #1256a0;
+  background: #1565c0;
 }
+
 .tag-table {
   width: 100%;
   border-collapse: collapse;
@@ -471,16 +524,16 @@ async function saveProcessSettings() {
 .tag-table td {
   padding: 12px;
   text-align: left;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #f5f5f5;
   font-size: 16pt;
 }
 .tag-table th {
-  background-color: #f8f9fa;
+  background-color: #f5f5f5;
   font-weight: bold;
-  color: #333;
+  color: #424242;
 }
 .tag-table tr:hover {
-  background-color: #f8f9fa;
+  background-color: #f5f5f5;
 }
 .tag-table input[type='text'] {
   font-size: 16pt !important;
@@ -556,10 +609,10 @@ async function saveProcessSettings() {
   transition: background 0.2s;
 }
 .edit-btn:hover {
-  background: #1256a0;
+  background: #1565c0;
 }
 .delete-btn {
-  background: #c62828;
+  background: #cc7693;
   color: #fff;
   border: none;
   border-radius: 4px;
@@ -569,7 +622,7 @@ async function saveProcessSettings() {
   transition: background 0.2s;
 }
 .delete-btn:hover {
-  background: #a31515;
+  background: #c62828;
 }
 .delete-btn.small,
 .add-btn.small {
@@ -579,14 +632,14 @@ async function saveProcessSettings() {
   margin-left: 0.5rem;
 }
 .add-btn.small {
-  background: #43a047;
+  background: #1976d2;
   color: #fff;
   border: none;
   transition: background 0.2s;
   width: 100%;
 }
 .add-btn.small:hover {
-  background: #2e7031;
+  background: #1565c0;
 }
 .todo-message-list {
   display: flex;
@@ -669,7 +722,7 @@ async function saveProcessSettings() {
   cursor: pointer;
 }
 .modal-actions button:last-child {
-  background: #aaa;
+  background: #9e9e9e;
   color: #fff;
 }
 .tag-badge {
@@ -704,10 +757,10 @@ async function saveProcessSettings() {
   min-width: 80px;
   padding: 8px 0;
   font-size: 15pt;
-  border: 1.5px solid #bbb;
+  border: 1.5px solid #9e9e9e;
   border-radius: 4px;
-  background: #f3f4f6;
-  color: #374151;
+  background: #f5f5f5;
+  color: #424242;
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
 }
@@ -717,7 +770,7 @@ async function saveProcessSettings() {
   border-color: #1976d2;
 }
 .notify-btn:not(.active):hover {
-  background: #e5e7eb;
+  background: #e0e0e0;
 }
 .todo-message-input {
   font-size: 16pt;
@@ -755,7 +808,7 @@ async function saveProcessSettings() {
 .confirm-content p {
   margin: 0.5rem 0;
   font-size: 1.1rem;
-  color: #374151;
+  color: #424242;
 }
 
 .modal-actions {
@@ -770,18 +823,16 @@ async function saveProcessSettings() {
 }
 
 .btn-primary {
-  background: #dc2626;
+  background: #e53935;
 }
-
 .btn-primary:hover {
-  background: #b91c1c;
+  background: #c62828;
 }
 
 .btn-secondary {
-  background: #6b7280;
+  background: #9e9e9e;
 }
-
 .btn-secondary:hover {
-  background: #4b5563;
+  background: #757575;
 }
 </style>

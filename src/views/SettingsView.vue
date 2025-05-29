@@ -1,5 +1,6 @@
 <template>
   <div class="settings-view">
+    <GlobalMessage />
     <template v-if="isAdmin">
       <h1>設定</h1>
       <div class="tabs">
@@ -142,26 +143,12 @@
 
 <script lang="ts" setup>
 import { ref, inject, computed, watch, onMounted } from 'vue';
-import {
-  usePermissionStore,
-  DepartmentPermission as BaseDepartmentPermission,
-} from '@/stores/permission';
+import { usePermissionStore } from '@/stores/permission';
 import { storeToRefs } from 'pinia';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../../amplify/data/resource';
-
-// isEditingを拡張した型
-interface Department {
-  id?: string;
-  departmentId: string;
-  departmentCode: string;
-  departmentName: string;
-  affiliationCode: string;
-  affiliationName: string;
-  role: string;
-  notificationEmails: string[];
-  isEditing?: boolean;
-}
+import GlobalMessage from '@/components/GlobalMessage.vue';
+import type { DepartmentPermission } from '@/stores/permission';
 
 const client = generateClient<Schema>();
 
@@ -175,37 +162,54 @@ async function fetchPermissions() {
     limit: 1000,
   });
   if (!errors && data) {
-    permissionStore.setPermissions(data);
+    permissionStore.setPermissions(
+      data.map(
+        (d) =>
+          ({
+            id: d.id ?? '',
+            departmentId: d.departmentId ?? '',
+            departmentName: d.departmentName ?? '',
+            role: d.role === '管理者' ? '管理者' : '一般',
+            editable: false,
+            notificationEmails: d.notificationEmails ?? [],
+          } as DepartmentPermission)
+      )
+    );
   }
 }
 
-// 編集用のローカルコピーを作成
-const localPermissions = ref<Department[]>(
+// isEditingを拡張したローカルUI用の型
+interface LocalDepartment {
+  id: string;
+  departmentId: string;
+  departmentName: string;
+  role: string;
+  editable: boolean;
+  notificationEmails: string[];
+  isEditing: boolean;
+}
+
+const localPermissions = ref<LocalDepartment[]>(
   permissions.value.map((p) => ({
-    id: p.id,
+    id: p.id ?? '',
     departmentId: p.departmentId ?? '',
-    departmentCode: p.departmentCode ?? '',
     departmentName: p.departmentName ?? '',
-    affiliationCode: p.affiliationCode ?? '',
-    affiliationName: p.affiliationName ?? '',
     role: p.role ?? '',
+    editable: p.editable ?? false,
     notificationEmails: p.notificationEmails ?? [],
     isEditing: false,
   }))
 );
 
-// permissionsが更新されたらlocalPermissionsも同期
 watch(
   permissions,
   (newVal) => {
     localPermissions.value = newVal.map((p) => ({
-      id: p.id,
+      id: p.id ?? '',
       departmentId: p.departmentId ?? '',
-      departmentCode: p.departmentCode ?? '',
       departmentName: p.departmentName ?? '',
-      affiliationCode: p.affiliationCode ?? '',
-      affiliationName: p.affiliationName ?? '',
       role: p.role ?? '',
+      editable: p.editable ?? false,
       notificationEmails: p.notificationEmails ?? [],
       isEditing: false,
     }));
@@ -246,20 +250,16 @@ const isAdmin = computed(() => {
 
 const activeTab = ref<'auth' | 'notify'>('auth');
 
-function handleEdit(dept: Department) {
+function handleEdit(dept: LocalDepartment) {
   if (!isAdmin.value) return;
   dept.isEditing = true;
 }
-async function handleSave(dept: Department) {
+async function handleSave(dept: LocalDepartment) {
   dept.isEditing = false;
-  // DB更新
   await client.models.Department.update({
     id: dept.id,
     departmentId: dept.departmentId,
-    departmentCode: dept.departmentCode ?? dept.departmentId,
     departmentName: dept.departmentName,
-    affiliationCode: dept.affiliationCode ?? '',
-    affiliationName: dept.affiliationName ?? '',
     role: dept.role,
     notificationEmails: dept.notificationEmails,
   });
@@ -272,13 +272,9 @@ async function addDepartment() {
         1
       : 1001
   ).toString();
-  // DB追加
   await client.models.Department.create({
     departmentId: newId,
-    departmentCode: newId,
     departmentName: '',
-    affiliationCode: '',
-    affiliationName: '',
     role: '一般',
     notificationEmails: [],
   });
@@ -288,13 +284,12 @@ async function removeDepartment(departmentId: string) {
   const dept = localPermissions.value.find(
     (d) => d.departmentId === departmentId
   );
-  if (!dept || !dept.id) return;
-  // DB削除
+  if (!dept) return;
   await client.models.Department.delete({ id: dept.id });
   await fetchPermissions();
 }
 // 通知先メールアドレスinputの型安全なハンドラ
-function onEmailsInput(event: Event, dept: Department) {
+function onEmailsInput(event: Event, dept: LocalDepartment) {
   const target = event.target as HTMLInputElement;
   dept.notificationEmails = target.value
     .split(',')

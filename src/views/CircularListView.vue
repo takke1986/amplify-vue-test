@@ -1,5 +1,7 @@
 <template>
   <div class="circular-list">
+    <GlobalMessage />
+    <ToastMessage ref="toastRef" />
     <div class="header">
       <h2>回覧箋一覧</h2>
       <router-link to="/circulars/create" class="btn-create">
@@ -8,55 +10,70 @@
     </div>
 
     <div class="filters">
-      <div class="filter-row">
-        <div class="filter-items">
-          <div class="filter-group">
-            <label for="db-date-start">作成日（開始）</label>
-            <input
-              type="date"
-              id="db-date-start"
-              v-model="dbFilter.dateRange.start"
-              class="form-control"
-            />
-          </div>
-          <div class="filter-group">
-            <label for="db-date-end">作成日（終了）</label>
-            <input
-              type="date"
-              id="db-date-end"
-              v-model="dbFilter.dateRange.end"
-              class="form-control"
-            />
-          </div>
-          <div class="filter-group">
-            <label for="db-deadline-start">期限（開始）</label>
-            <input
-              type="date"
-              id="db-deadline-start"
-              v-model="dbFilter.deadlineRange.start"
-              class="form-control"
-            />
-          </div>
-          <div class="filter-group">
-            <label for="db-deadline-end">期限（終了）</label>
-            <input
-              type="date"
-              id="db-deadline-end"
-              v-model="dbFilter.deadlineRange.end"
-              class="form-control"
-            />
-          </div>
-          <div class="filter-group apply-button-group">
-            <label>&nbsp;</label>
-            <button @click="applyDbFilter" class="btn-apply">データ取得</button>
+      <!-- 1段目: データ取得条件（やや濃いグレー） -->
+      <div class="fetch-filter-block">
+        <div class="filter-row">
+          <div class="filter-items">
+            <div class="filter-group">
+              <label for="db-process">工程</label>
+              <select
+                id="db-process"
+                v-model="dbFilter.process"
+                class="form-control"
+              >
+                <option value="">すべて</option>
+                <option v-for="idx in 15" :key="idx" :value="idx">
+                  {{ idx }}: {{ processNames[idx] }}
+                </option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label for="db-deadline-start">期限（開始）</label>
+              <input
+                type="date"
+                id="db-deadline-start"
+                v-model="dbFilter.deadlineRange.start"
+                class="form-control"
+              />
+            </div>
+            <div class="filter-group">
+              <label for="db-deadline-end">期限（終了）</label>
+              <input
+                type="date"
+                id="db-deadline-end"
+                v-model="dbFilter.deadlineRange.end"
+                class="form-control"
+              />
+            </div>
+            <div
+              class="filter-group apply-button-group"
+              style="align-self: flex-end"
+            >
+              <label>&nbsp;</label>
+              <button @click="applyDbFilter" class="btn-apply">
+                <span class="refresh-icon">↻</span>データ取得
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
-
-    <div class="filter-row">
-      <div class="filter-items">
+    <!-- 1段目と2段目の間に余白 -->
+    <div style="height: 0.5rem"></div>
+    <!-- 2段目・3段目まとめてグレー背景で囲む -->
+    <div class="local-filter-block">
+      <div class="filter-row">
         <div class="filter-items">
+          <div class="filter-group">
+            <label for="id">識別番号</label>
+            <input
+              type="text"
+              id="id"
+              v-model="filter.id"
+              class="form-control id-form-control"
+              placeholder="識別番号で検索"
+            />
+          </div>
           <div class="filter-group">
             <label for="title">タイトル</label>
             <input
@@ -75,24 +92,6 @@
               v-model="filter.creator"
               class="form-control"
               placeholder="作成者で検索"
-            />
-          </div>
-          <div class="filter-group">
-            <label for="date-start">作成日（開始）</label>
-            <input
-              type="date"
-              id="date-start"
-              v-model="filter.dateRange.start"
-              class="form-control"
-            />
-          </div>
-          <div class="filter-group">
-            <label for="date-end">作成日（終了）</label>
-            <input
-              type="date"
-              id="date-end"
-              v-model="filter.dateRange.end"
-              class="form-control"
             />
           </div>
           <div class="filter-group">
@@ -132,6 +131,10 @@
               placeholder="更新者で検索"
             />
           </div>
+        </div>
+      </div>
+      <div class="filter-row">
+        <div class="filter-items">
           <div class="filter-group tag-filter-group">
             <label for="tag-filter">タグ</label>
             <div class="tag-filter-row-horizontal">
@@ -185,23 +188,17 @@
       <table class="circular-table">
         <thead>
           <tr>
+            <th></th>
+            <th @click="sortBy('id')" class="sortable">
+              識別番号
+              <span v-if="sortKey === 'id'">
+                <span v-if="sortOrder === 'asc'">▲</span>
+                <span v-else>▼</span>
+              </span>
+            </th>
             <th @click="sortBy('title')" class="sortable">
               タイトル
               <span v-if="sortKey === 'title'">
-                <span v-if="sortOrder === 'asc'">▲</span>
-                <span v-else>▼</span>
-              </span>
-            </th>
-            <th @click="sortBy('creator')" class="sortable">
-              作成者
-              <span v-if="sortKey === 'creator'">
-                <span v-if="sortOrder === 'asc'">▲</span>
-                <span v-else>▼</span>
-              </span>
-            </th>
-            <th @click="sortBy('createdAt')" class="sortable">
-              作成日
-              <span v-if="sortKey === 'createdAt'">
                 <span v-if="sortOrder === 'asc'">▲</span>
                 <span v-else>▼</span>
               </span>
@@ -241,22 +238,33 @@
                 <span v-else>▼</span>
               </span>
             </th>
-            <th>操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="circular in paginatedCirculars" :key="circular.id">
             <td>
+              <router-link :to="'/circulars/' + circular.id" class="btn-detail">
+                詳細
+              </router-link>
+            </td>
+            <td>
+              <span
+                class="ellipsis-cell id-cell"
+                :title="circular.id"
+                @click="copyId(circular.id)"
+              >
+                {{
+                  circular.id.length > 12
+                    ? circular.id.slice(0, 4) + '…' + circular.id.slice(-4)
+                    : circular.id
+                }}
+              </span>
+            </td>
+            <td>
               <span class="ellipsis-cell" :title="circular.title">{{
                 circular.title
               }}</span>
             </td>
-            <td>
-              <span class="ellipsis-cell" :title="circular.creator">{{
-                circular.creator
-              }}</span>
-            </td>
-            <td>{{ formatDate(circular.createdAt) }}</td>
             <td>{{ formatDate(circular.deadline) }}</td>
             <td>
               <div style="min-width: 150px">
@@ -313,13 +321,13 @@
                     :style="{
                       background: tag.color,
                       color: '#fff',
-                      maxWidth: '80px',
+                      maxWidth: '120px',
                     }"
                     :title="tag.name"
                   >
                     {{
-                      tag.name.length > 8
-                        ? tag.name.slice(0, 8) + '…'
+                      tag.name.length > 3
+                        ? tag.name.slice(0, 4) + '…'
                         : tag.name
                     }}
                   </span>
@@ -354,31 +362,27 @@
               }}</span>
             </td>
             <td>{{ formatDate(circular.updatedAt) }}</td>
-            <td>
-              <router-link :to="'/circulars/' + circular.id" class="btn-detail">
-                詳細
-              </router-link>
-            </td>
           </tr>
         </tbody>
       </table>
     </div>
     <div class="pagination">
-      <button @click="prevPage" :disabled="currentPage === 1">前へ</button>
-      <template v-for="item in paginationRange" :key="item.key">
-        <button
-          v-if="item.type === 'page'"
-          @click="goToPage(item.page!)"
-          :class="{
-            active: item.page === currentPage,
-            viewed: item.viewed,
-          }"
-        >
-          {{ item.page }}
-        </button>
-        <span v-else class="pagination-ellipsis">…</span>
-      </template>
-      <button @click="nextPage" :disabled="currentPage === totalPages">
+      <button
+        class="pagination-btn"
+        :disabled="currentPage === 1"
+        @click="prevPage"
+      >
+        前へ
+      </button>
+      <span class="page-info">
+        {{ currentPage }} / {{ totalPages }} ページ (全
+        {{ filteredCirculars.length }} 件)
+      </span>
+      <button
+        class="pagination-btn"
+        :disabled="currentPage === totalPages"
+        @click="nextPage"
+      >
         次へ
       </button>
     </div>
@@ -389,18 +393,12 @@
 </template>
 
 <script setup lang="ts">
-import {
-  ref,
-  computed,
-  watch,
-  onMounted,
-  inject,
-  onUnmounted,
-  onActivated,
-} from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, onActivated } from 'vue';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../../amplify/data/resource';
 import { processNames } from '@/mocks/mockCirculars';
+import GlobalMessage from '@/components/GlobalMessage.vue';
+import ToastMessage from '@/components/ToastMessage.vue';
 
 interface Tag {
   name: string;
@@ -411,12 +409,9 @@ const FILTER_KEY = 'circulars_filter';
 const PAGINATION_KEY = 'circulars_pagination';
 
 const defaultFilter = {
+  id: '',
   title: '',
   creator: '',
-  dateRange: {
-    start: '',
-    end: '',
-  },
   updateDateRange: {
     start: '',
     end: '',
@@ -445,15 +440,14 @@ const isLoading = ref(false);
 const CIRCULARS_DATA_KEY = 'circulars_data';
 
 const dbFilter = ref({
-  dateRange: {
-    start: '',
-    end: '',
-  },
+  process: '',
   deadlineRange: {
     start: '',
     end: '',
   },
 });
+
+const toastRef = ref();
 
 // ページネーション設定をローカルストレージから読み込む
 function loadPaginationFromStorage() {
@@ -526,19 +520,9 @@ async function fetchCirculars() {
     // データベースフィルターの構築
     const filter: any = {};
 
-    // 作成日フィルター
-    if (dbFilter.value.dateRange.start || dbFilter.value.dateRange.end) {
-      filter.createdAt = {};
-      if (dbFilter.value.dateRange.start) {
-        filter.createdAt.ge = new Date(
-          dbFilter.value.dateRange.start
-        ).toISOString();
-      }
-      if (dbFilter.value.dateRange.end) {
-        filter.createdAt.le = new Date(
-          dbFilter.value.dateRange.end
-        ).toISOString();
-      }
+    // 工程フィルター
+    if (dbFilter.value.process) {
+      filter.process = { eq: Number(dbFilter.value.process) };
     }
 
     // 期限フィルター
@@ -665,22 +649,14 @@ watch(
   { deep: true }
 );
 
-// 部署グループ判定関数
-function isSameBushoGroup(userBusho: unknown, recordBusho: unknown): boolean {
-  const toNum = (b: unknown) => {
-    if (typeof b === 'string' || typeof b === 'number') return Number(b);
-    return NaN;
-  };
-  const userNum = toNum(userBusho);
-  const recordNum = toNum(recordBusho);
-  if (isNaN(userNum) || isNaN(recordNum)) return false;
-  return Math.floor(userNum / 1000) === Math.floor(recordNum / 1000);
-}
-
-const currentUser = inject('currentUser') as any;
-
 const filteredCirculars = computed(() => {
   let result = circulars.value;
+
+  // IDフィルタ
+  if (filter.value.id) {
+    const idKw = filter.value.id.toLowerCase();
+    result = result.filter((c: any) => c.id.toLowerCase().includes(idKw));
+  }
 
   // タイトルフィルタ
   if (filter.value.title) {
@@ -709,16 +685,6 @@ const filteredCirculars = computed(() => {
     result = result.filter(
       (c: any) => c.updatedBy && c.updatedBy.toLowerCase().includes(updatedByKw)
     );
-  }
-
-  // 作成日範囲でフィルタリング
-  if (filter.value.dateRange.start) {
-    const startDate = new Date(filter.value.dateRange.start);
-    result = result.filter((c: any) => new Date(c.createdAt) >= startDate);
-  }
-  if (filter.value.dateRange.end) {
-    const endDate = new Date(filter.value.dateRange.end);
-    result = result.filter((c: any) => new Date(c.createdAt) <= endDate);
   }
 
   // 更新日範囲でフィルタリング
@@ -810,15 +776,6 @@ const paginatedCirculars = computed(() => {
   return sortedCirculars.value.slice(start, end);
 });
 
-const goToPage = (page: number) => {
-  if (page >= 1 && page <= totalPages.value) {
-    currentPage.value = page;
-    // 閲覧済みページとして記録
-    defaultPagination.viewedPages.add(page);
-    savePaginationToStorage();
-  }
-};
-
 const nextPage = () => {
   if (currentPage.value < totalPages.value) {
     currentPage.value++;
@@ -841,71 +798,6 @@ const onItemsPerPageChange = () => {
   currentPage.value = 1;
   savePaginationToStorage();
 };
-
-// ページネーションの表示範囲を計算
-const paginationRange = computed(() => {
-  const range: {
-    type: 'page' | 'ellipsis';
-    page?: number;
-    key: string;
-    viewed?: boolean;
-  }[] = [];
-  const total = totalPages.value;
-  const current = currentPage.value;
-  const delta = 2; // 現在ページの前後何ページを表示するか
-
-  if (total <= 7) {
-    for (let i = 1; i <= total; i++) {
-      range.push({
-        type: 'page',
-        page: i,
-        key: `page-${i}`,
-        viewed: defaultPagination.viewedPages.has(i),
-      });
-    }
-    return range;
-  }
-
-  // 先頭
-  range.push({
-    type: 'page',
-    page: 1,
-    key: 'page-1',
-    viewed: defaultPagination.viewedPages.has(1),
-  });
-
-  // 省略（左）
-  if (current > delta + 2) {
-    range.push({ type: 'ellipsis', key: 'ellipsis-left' });
-  }
-
-  // 中央
-  const start = Math.max(2, current - delta);
-  const end = Math.min(total - 1, current + delta);
-  for (let i = start; i <= end; i++) {
-    range.push({
-      type: 'page',
-      page: i,
-      key: `page-${i}`,
-      viewed: defaultPagination.viewedPages.has(i),
-    });
-  }
-
-  // 省略（右）
-  if (current < total - delta - 1) {
-    range.push({ type: 'ellipsis', key: 'ellipsis-right' });
-  }
-
-  // 最後
-  range.push({
-    type: 'page',
-    page: total,
-    key: `page-${total}`,
-    viewed: defaultPagination.viewedPages.has(total),
-  });
-
-  return range;
-});
 
 // ↓ スクロールガイド用
 const guideText = ref('↓ まだ下に続きがあります');
@@ -966,6 +858,12 @@ const applyDbFilter = () => {
   savePaginationToStorage();
   fetchCirculars();
 };
+
+function copyId(id: string) {
+  navigator.clipboard.writeText(id).then(() => {
+    toastRef.value?.show('識別番号をコピーしました: ' + id);
+  });
+}
 </script>
 
 <style scoped>
@@ -990,7 +888,7 @@ h2 {
 
 .btn-create {
   padding: 8px 16px;
-  background-color: #4caf50;
+  background-color: #008080;
   color: white;
   text-decoration: none;
   border-radius: 4px;
@@ -999,10 +897,17 @@ h2 {
 
 .filters {
   margin-bottom: 1.2rem;
-  padding: 0.7rem;
-  background-color: #f9fafb;
+  padding: 0;
+  background-color: transparent;
   border-radius: 0.5rem;
   position: relative;
+}
+
+/* 1段目: データ取得条件 */
+.fetch-filter-block {
+  background: #e0e0e0;
+  border-radius: 0.5rem;
+  padding: 1rem 0.7rem;
 }
 
 .filter-row {
@@ -1033,13 +938,17 @@ h2 {
 
 .filter-group label {
   font-size: 16pt;
-  color: #374151;
+  color: #424242;
   font-weight: 500;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  min-width: 80px;
 }
 
 .form-control {
   padding: 8px;
-  border: 1px solid #ddd;
+  border: 1px solid #9e9e9e;
   border-radius: 4px;
   font-size: 16pt;
   height: 40px;
@@ -1063,6 +972,7 @@ h2 {
   text-align: left;
   border-bottom: 1px solid #ddd;
   font-size: 16pt;
+  vertical-align: middle;
 }
 
 .circular-table th {
@@ -1076,30 +986,30 @@ h2 {
 }
 
 .status-badge.draft {
-  background-color: #e0e0e0;
+  background-color: #9e9e9e;
 }
 
 .status-badge.in_progress {
-  background-color: #fff3e0;
-  color: #e65100;
+  background-color: #e67a00;
+  color: #ffffff;
 }
 
 .status-badge.completed {
-  background-color: #e8f5e9;
-  color: #2e7d32;
+  background-color: #008080;
+  color: #ffffff;
 }
 
 .status-badge.expired {
-  background-color: #ffebee;
-  color: #c62828;
+  background-color: #b8677a;
+  color: #ffffff;
 }
 
 .btn-reset {
   display: inline-block;
   padding: 0.3rem 0.3rem;
-  background-color: #f3f4f6;
-  color: #374151;
-  border: 1px solid #d1d5db;
+  background-color: #f5f5f5;
+  color: #424242;
+  border: 1px solid #9e9e9e;
   border-radius: 0.375rem;
   cursor: pointer;
   font-size: 15pt;
@@ -1107,12 +1017,12 @@ h2 {
 }
 
 .btn-reset:hover {
-  background-color: #e5e7eb;
+  background-color: #9e9e9e;
 }
 
 .btn-detail {
   padding: 0.25rem 0.75rem;
-  background-color: #0078d4;
+  background-color: #1976d2;
   color: white;
   text-decoration: none;
   border-radius: 0.25rem;
@@ -1121,74 +1031,52 @@ h2 {
 }
 
 .btn-detail:hover {
-  background-color: #106ebe;
+  background-color: #1565c0;
 }
 
 .pagination {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 0.5rem;
+  gap: 2rem;
   margin: 2rem 0 0 0;
   flex-wrap: wrap;
   max-width: 100vw;
 }
-.pagination button {
-  background: #f5f5f5;
-  border: 1px solid #888;
+.pagination-btn {
+  padding: 8px 16px;
+  border: 1px solid #ddd;
   border-radius: 4px;
-  padding: 0.5rem 1rem;
-  color: #222;
-  font-weight: 500;
+  background-color: white;
+  color: #1976d2;
+  font-size: 16pt;
+  min-width: 80px;
   cursor: pointer;
-  transition: background 0.2s, color 0.2s, border-color 0.2s;
-  font-size: 16pt;
+  transition: all 0.2s;
+  opacity: 1;
 }
-.pagination button.active {
-  background: #0078d4;
-  color: #fff;
-  border-color: #0078d4;
-}
-.pagination button:disabled {
-  opacity: 0.5;
+.pagination-btn:disabled {
   cursor: not-allowed;
+  opacity: 0.5;
+  color: #bbb;
 }
-.pagination-ellipsis {
-  padding: 0 0.5rem;
-  color: #888;
-  font-size: 1.2rem;
-  user-select: none;
-}
-
-.pagination-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-.pagination-controls label {
-  font-size: 16pt;
-  color: #333;
-}
-.pagination-controls select {
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-  font-size: 16pt;
+.page-info {
+  color: #666;
+  font-size: 1.1em;
 }
 
 .footer {
   margin-top: 3rem;
   padding: 1.5rem 0 0 0;
   text-align: center;
-  color: #888;
+  color: #9e9e9e;
   font-size: 16pt;
 }
 
 .recipient-badge {
   display: inline-block;
-  background: #f3f4f6;
-  color: #333;
+  background: #f5f5f5;
+  color: #424242;
   border-radius: 8px;
   padding: 2px 8px;
   font-size: 0.85em;
@@ -1208,14 +1096,14 @@ h2 {
 }
 
 .process-total {
-  color: #666;
+  color: #9e9e9e;
   font-size: 0.9em;
   margin-right: 4px;
 }
 
 .process-name {
   font-weight: 600;
-  color: #444;
+  color: #424242;
   background: #f5f5f5;
   padding: 2px 6px;
   border-radius: 4px;
@@ -1242,15 +1130,15 @@ h2 {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #e0e0e0;
+  background: #9e9e9e;
   position: relative;
   border: 2px solid #fff;
-  box-shadow: 0 0 0 1px #ddd;
+  box-shadow: 0 0 0 1px #9e9e9e;
 }
 
 .process-step-active {
-  background: #4caf50;
-  box-shadow: 0 0 0 1px #4caf50;
+  background: #008080;
+  box-shadow: 0 0 0 1px #008080;
 }
 
 .process-step-current {
@@ -1311,7 +1199,7 @@ h2 {
   transition: filter 0.2s;
 }
 .tag-more {
-  background: #bdbdbd;
+  background: #9e9e9e;
   color: #fff;
   border-radius: 6px;
   padding: 2px 10px;
@@ -1330,7 +1218,7 @@ h2 {
   left: 0;
   top: 120%;
   background: #fff;
-  border: 1px solid #bdbdbd;
+  border: 1px solid #9e9e9e;
   border-radius: 8px;
   box-shadow: 0 2px 8px #0002;
   padding: 8px 12px;
@@ -1341,14 +1229,14 @@ h2 {
 
 .ellipsis-cell {
   display: inline-block;
-  max-width: 120px;
+  max-width: 300px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: bottom;
 }
 .tag-badge.ellipsis-cell {
-  max-width: 80px;
+  max-width: 120px;
 }
 
 .tag-filter-row-horizontal {
@@ -1359,15 +1247,24 @@ h2 {
   min-width: 0;
 }
 .tag-suggest-wrapper {
+  position: relative;
+}
+.tag-suggest-list {
+  max-height: 220px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  position: absolute;
+  z-index: 100;
   width: 100%;
-  max-width: 320px;
 }
 .tag-reset-btn {
   margin-left: 0;
   margin-top: 0;
   min-width: 80px;
   max-width: 120px;
-  height: 40px;
   width: auto;
   box-sizing: border-box;
 }
@@ -1419,7 +1316,6 @@ h2 {
   font-size: 16pt;
   cursor: pointer;
   transition: background-color 0.2s;
-  height: 40px;
   width: 100%;
   margin-top: 0;
 }
@@ -1429,18 +1325,64 @@ h2 {
 }
 
 .pagination button.viewed {
-  background: #e3f2fd;
-  border-color: #2196f3;
+  background: #f5f5f5;
+  border-color: #1976d2;
   color: #1976d2;
 }
 
 .pagination button.viewed:hover {
-  background: #bbdefb;
+  background: #e3f2fd;
 }
 
 .pagination button.viewed.active {
   background: #1976d2;
   color: #fff;
   border-color: #1976d2;
+}
+
+.refresh-icon {
+  font-size: 1.2em;
+}
+
+.id-cell {
+  cursor: pointer;
+  color: #1976d2;
+  transition: background 0.2s;
+}
+.id-cell:hover {
+  background: #e3f2fd;
+}
+
+/* ID列の幅・中央揃え */
+.circular-table th.id-header,
+.circular-table td.id-cell {
+  max-width: 120px;
+  min-width: 80px;
+  width: 120px;
+  text-align: center;
+}
+
+/* 2段目・3段目まとめてグレー背景 */
+.local-filter-block {
+  background: #f5f5f5;
+  border-radius: 0.5rem;
+  padding: 1rem 0.7rem;
+  margin-bottom: 1.2rem;
+}
+
+/* IDフィルタのフォーム幅を100%に */
+.id-form-control {
+  width: 100%;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.pagination-controls label,
+.pagination-controls select {
+  font-size: 16pt;
 }
 </style>

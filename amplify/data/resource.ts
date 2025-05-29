@@ -14,8 +14,10 @@ const schema = a.schema({
       createdBy: a.string(),
       createdAt: a.string(),
       processSettings: a.string(), // JSON文字列で工程別通知設定
-      circularTags: a.hasMany('CircularTag', 'id'),
-      todoMessages: a.hasMany('TodoMessage', 'id'),
+      circularTags: a.hasMany('CircularTag', 'tagId'),
+      todoMessages: a.hasMany('TodoMessage', 'tagId'),
+      updatedBy: a.string(),
+      updatedAt: a.string(),
     })
     .secondaryIndexes((index) => [index('createdBy')])
     .authorization((allow) => [allow.publicApiKey()]),
@@ -36,6 +38,7 @@ const schema = a.schema({
       updatedBy: a.string(),
       updatedAt: a.string(),
       history: a.string(), // JSON文字列
+      version: a.integer().default(1), // バージョン管理用フィールドを追加
       circularTags: a.hasMany('CircularTag', 'circularId'),
       notifications: a.hasMany('Notification', 'circularId'),
     })

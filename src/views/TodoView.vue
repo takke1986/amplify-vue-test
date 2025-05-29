@@ -1,85 +1,164 @@
 <template>
   <div class="todo-container">
+    <GlobalMessage />
+    <ToastMessage ref="toastRef" />
     <div class="header">
       <h2>工程変更通知</h2>
     </div>
 
     <div class="filters">
-      <div class="filter-row">
-        <div class="filter-items">
-          <div class="filter-group">
-            <label for="title">タイトル</label>
-            <input
-              type="text"
-              id="title"
-              v-model="searchQuery"
-              class="form-control"
-              placeholder="タイトルで検索"
-            />
+      <!-- 1段目: データ取得条件（やや濃いグレー） -->
+      <div class="fetch-filter-block">
+        <div class="filter-row">
+          <div class="filter-items">
+            <div class="filter-group">
+              <label for="status">ステータス</label>
+              <select id="status" v-model="statusFilter" class="form-control">
+                <option value="all">確認済み以外</option>
+                <option value="pending">未対応</option>
+                <option value="in_progress">対応中</option>
+                <option value="completed">確認済み</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label for="status-changed-from">ステータス変更日（自）</label>
+              <input
+                type="date"
+                id="status-changed-from"
+                v-model="statusChangedAtFrom"
+                class="form-control"
+              />
+            </div>
+            <div class="filter-group">
+              <label for="status-changed-to">ステータス変更日（至）</label>
+              <input
+                type="date"
+                id="status-changed-to"
+                v-model="statusChangedAtTo"
+                class="form-control"
+              />
+            </div>
+            <div class="filter-group" style="align-self: flex-end">
+              <button class="refresh-btn" @click="onFetchNotifications">
+                <span class="refresh-icon">↻</span>
+                データ取得
+              </button>
+            </div>
           </div>
-          <div class="filter-group">
-            <label for="status">ステータス</label>
-            <select id="status" v-model="statusFilter" class="form-control">
-              <option value="all">すべて</option>
-              <option value="pending">未対応</option>
-              <option value="in_progress">対応中</option>
-              <option value="completed">確認済み</option>
-            </select>
+        </div>
+      </div>
+      <!-- 1段目と2段目の間に余白 -->
+      <div style="height: 0.5rem"></div>
+      <!-- 2段目: ローカルフィルタ（薄いグレー） -->
+      <div class="local-filter-block">
+        <div class="filter-row">
+          <div class="filter-items">
+            <div class="filter-group">
+              <label for="column-status">カラムステータス</label>
+              <select
+                id="column-status"
+                v-model="columnFilters.status"
+                class="form-control"
+              >
+                <option value="">すべて</option>
+                <option value="pending">未対応</option>
+                <option value="in_progress">対応中</option>
+                <option value="completed">確認済み</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label for="id">識別番号</label>
+              <input
+                type="text"
+                id="id"
+                v-model="columnFilters.id"
+                class="form-control"
+                placeholder="識別番号で検索"
+              />
+            </div>
+            <div class="filter-group filter-group-title">
+              <label for="title">タイトル</label>
+              <input
+                type="text"
+                id="title"
+                v-model="searchQuery"
+                class="form-control"
+                placeholder="タイトルで検索"
+              />
+            </div>
+            <div class="filter-group">
+              <label for="from-process">変更内容(前)</label>
+              <input
+                type="text"
+                id="from-process"
+                v-model="columnFilters.fromProcess"
+                class="form-control"
+                placeholder="前工程で検索"
+              />
+            </div>
+            <div class="filter-group">
+              <label for="to-process">変更内容(後)</label>
+              <input
+                type="text"
+                id="to-process"
+                v-model="columnFilters.toProcess"
+                class="form-control"
+                placeholder="後工程で検索"
+              />
+            </div>
+            <div class="filter-group">
+              <label for="due-date-from">期限（自）</label>
+              <input
+                type="date"
+                id="due-date-from"
+                v-model="columnFilters.dueDateFrom"
+                class="form-control"
+              />
+            </div>
+            <div class="filter-group">
+              <label for="due-date-to">期限（至）</label>
+              <input
+                type="date"
+                id="due-date-to"
+                v-model="columnFilters.dueDateTo"
+                class="form-control"
+              />
+            </div>
           </div>
-          <div class="filter-group">
-            <label for="from-process">前工程</label>
-            <select
-              id="from-process"
-              v-model="columnFilters.fromProcess"
-              class="form-control"
-            >
-              <option value="">すべて</option>
-              <option value="承認">承認工程</option>
-              <option value="確認">確認工程</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <label for="to-process">後工程</label>
-            <select
-              id="to-process"
-              v-model="columnFilters.toProcess"
-              class="form-control"
-            >
-              <option value="">すべて</option>
-              <option value="承認">承認工程</option>
-              <option value="確認">確認工程</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <label for="assignee">担当者</label>
-            <input
-              type="text"
-              id="assignee"
-              v-model="columnFilters.assignee"
-              class="form-control"
-              placeholder="担当者で検索"
-            />
-          </div>
-          <div class="filter-group">
-            <label for="due-date">期限</label>
-            <input
-              type="date"
-              id="due-date"
-              v-model="columnFilters.dueDate"
-              class="form-control"
-            />
-          </div>
-          <div class="filter-group">
-            <label for="status-changed">ステータス変更日</label>
-            <input
-              type="date"
-              id="status-changed"
-              v-model="columnFilters.statusChangedAt"
-              class="form-control"
-            />
-          </div>
-          <div class="filter-group reset-group">
-            <button @click="resetFilters" class="btn-reset">リセット</button>
+        </div>
+        <div class="filter-row">
+          <div class="filter-items">
+            <div class="filter-group">
+              <label for="update-date-from">更新日（自）</label>
+              <input
+                type="date"
+                id="update-date-from"
+                v-model="columnFilters.updateDateFrom"
+                class="form-control"
+              />
+            </div>
+            <div class="filter-group">
+              <label for="update-date-to">更新日（至）</label>
+              <input
+                type="date"
+                id="update-date-to"
+                v-model="columnFilters.updateDateTo"
+                class="form-control"
+              />
+            </div>
+            <div class="filter-group">
+              <label for="updatedBy">更新者</label>
+              <input
+                type="text"
+                id="updatedBy"
+                v-model="columnFilters.updatedBy"
+                class="form-control"
+                placeholder="更新者で検索"
+              />
+            </div>
+            <div class="filter-group reset-group" style="margin-left: auto">
+              <button @click="resetFilters" class="btn-reset">リセット</button>
+            </div>
           </div>
         </div>
       </div>
@@ -111,6 +190,13 @@
                 <span v-else>▼</span>
               </span>
             </th>
+            <th @click="sortBy('id')" class="sortable">
+              識別番号
+              <span v-if="sortKey === 'id'">
+                <span v-if="sortOrder === 'asc'">▲</span>
+                <span v-else>▼</span>
+              </span>
+            </th>
             <th @click="sortBy('circularTitle')" class="sortable">
               回覧箋タイトル
               <span v-if="sortKey === 'circularTitle'">
@@ -125,23 +211,23 @@
                 <span v-else>▼</span>
               </span>
             </th>
-            <th @click="sortBy('assignee')" class="sortable">
-              担当者
-              <span v-if="sortKey === 'assignee'">
-                <span v-if="sortOrder === 'asc'">▲</span>
-                <span v-else>▼</span>
-              </span>
-            </th>
-            <th @click="sortBy('statusChangedAt')" class="sortable">
-              ステータス変更日
-              <span v-if="sortKey === 'statusChangedAt'">
-                <span v-if="sortOrder === 'asc'">▲</span>
-                <span v-else>▼</span>
-              </span>
-            </th>
             <th @click="sortBy('dueDate')" class="sortable">
               期限
               <span v-if="sortKey === 'dueDate'">
+                <span v-if="sortOrder === 'asc'">▲</span>
+                <span v-else>▼</span>
+              </span>
+            </th>
+            <th @click="sortBy('updatedAt')" class="sortable">
+              更新日
+              <span v-if="sortKey === 'updatedAt'">
+                <span v-if="sortOrder === 'asc'">▲</span>
+                <span v-else>▼</span>
+              </span>
+            </th>
+            <th @click="sortBy('updatedBy')" class="sortable">
+              更新者
+              <span v-if="sortKey === 'updatedBy'">
                 <span v-if="sortOrder === 'asc'">▲</span>
                 <span v-else>▼</span>
               </span>
@@ -155,19 +241,39 @@
             :key="notification.id"
           >
             <td>
-              <span class="status-badge" :class="notification.status">{{
-                notification.statusText
-              }}</span>
+              <button
+                class="status-toggle"
+                :class="notification.status"
+                @click="toggleStatus(notification)"
+              >
+                {{ getStatusText(notification.status) }}
+              </button>
+            </td>
+            <td>
+              <span
+                class="id-cell"
+                :title="notification.id"
+                @click="copyId(notification.id)"
+                style="cursor: pointer; color: #1976d2"
+              >
+                {{
+                  notification.id.length > 6
+                    ? notification.id.slice(0, 3) +
+                      '...' +
+                      notification.id.slice(-3)
+                    : notification.id
+                }}
+              </span>
             </td>
             <td>{{ notification.circularTitle }}</td>
             <td>
-              <span class="process-badge">{{
-                getFromProcess(notification.changeDescription)
-              }}</span>
+              <span class="process-badge">
+                {{ getFromProcess(notification.changeDescription) }}
+              </span>
               <span class="process-arrow">→</span>
-              <span class="process-badge">{{
-                getToProcess(notification.changeDescription)
-              }}</span>
+              <span class="process-badge">
+                {{ getToProcess(notification.changeDescription) }}
+              </span>
               <ul
                 v-if="getTodoMessagesForNotification(notification).length"
                 class="todo-message-list-inline"
@@ -182,31 +288,26 @@
                 </li>
               </ul>
             </td>
-            <td>{{ notification.assignee }}</td>
-            <td>{{ formatDateOnly(notification.statusChangedAt) }}</td>
             <td>{{ formatDateOnly(notification.dueDate) }}</td>
+            <td>{{ formatDateOnly(notification.updatedAt) }}</td>
+            <td>{{ notification.updatedBy }}</td>
             <td>
               <div class="action-buttons">
-                <button
-                  v-if="notification.status === 'pending'"
-                  class="action-btn in-progress"
-                  @click="updateStatus(notification.id, 'in_progress')"
-                >
-                  対応開始
-                </button>
-                <button
-                  v-if="notification.status === 'in_progress'"
-                  class="action-btn confirm"
-                  @click="updateStatus(notification.id, 'completed')"
-                >
-                  確認済み
-                </button>
                 <button
                   class="action-btn view"
                   @click="viewCircular(notification.circularId)"
                 >
                   表示
                 </button>
+                <router-link
+                  :to="{
+                    name: 'todo-detail',
+                    params: { id: notification.id },
+                  }"
+                  class="action-btn detail"
+                >
+                  詳細
+                </router-link>
               </div>
             </td>
           </tr>
@@ -234,103 +335,393 @@
         次へ
       </button>
     </div>
+
+    <!-- Todo詳細モーダル -->
+    <div
+      v-if="showDetailModal"
+      class="modal-overlay"
+      @click.self="closeDetailModal"
+    >
+      <div class="modal-content todo-detail-modal">
+        <h3>工程変更通知の詳細</h3>
+        <div class="detail-content">
+          <div class="detail-item">
+            <span class="label">タイトル：</span>
+            <span class="value">{{ selectedNotification?.circularTitle }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="label">変更内容：</span>
+            <div class="value">
+              <span class="process-badge">{{
+                getFromProcess(selectedNotification?.changeDescription || '')
+              }}</span>
+              <span class="process-arrow">→</span>
+              <span class="process-badge">{{
+                getToProcess(selectedNotification?.changeDescription || '')
+              }}</span>
+            </div>
+          </div>
+          <div class="detail-item">
+            <span class="label">更新者：</span>
+            <span class="value">{{ selectedNotification?.updatedBy }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="label">期限：</span>
+            <span class="value">{{
+              formatDate(selectedNotification?.dueDate || new Date())
+            }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="label">ステータス：</span>
+            <span class="value">
+              <span class="status-badge" :class="selectedNotification?.status">
+                {{ selectedNotification?.statusText }}
+              </span>
+            </span>
+          </div>
+          <div class="detail-item">
+            <span class="label">ステータス変更日：</span>
+            <span class="value">{{
+              formatDate(selectedNotification?.statusChangedAt || new Date())
+            }}</span>
+          </div>
+          <div
+            class="detail-item todo-messages"
+            v-if="getTodoMessagesForNotification(selectedNotification || {} as Notification).length"
+          >
+            <span class="label">確認事項：</span>
+            <ul class="todo-message-list">
+              <li
+                v-for="(msg, i) in getTodoMessagesForNotification(selectedNotification || {} as Notification)"
+                :key="i"
+              >
+                {{ msg }}
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="action-btn close" @click="closeDetailModal">
+            閉じる
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useTagSettingsStore } from '@/stores/tagSettings';
+import { generateClient } from 'aws-amplify/data';
+import type { Schema } from '../../amplify/data/resource';
+import GlobalMessage from '@/components/GlobalMessage.vue';
+import ToastMessage from '@/components/ToastMessage.vue';
 
 interface Notification {
-  id: number;
+  id: string;
   circularId: string;
   circularTitle: string;
   status: 'pending' | 'in_progress' | 'completed';
   statusText: string;
-  timestamp: Date;
   changeDescription: string;
   actionRequired: string;
   assignee: string;
-  dueDate: Date;
-  statusChangedAt: Date;
+  dueDate: string;
+  statusChangedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
 }
 
 const router = useRouter();
+const client = generateClient<Schema>();
+const notifications = ref<Notification[]>([]);
 const searchQuery = ref('');
 const statusFilter = ref('all');
 const currentPage = ref(1);
 const itemsPerPage = ref(10);
 
-const notifications = ref<Notification[]>([
-  {
-    id: 1,
-    circularId: 'circ-001',
-    circularTitle: '2024年度予算案の回覧',
-    status: 'pending',
-    statusText: '未対応',
-    timestamp: new Date('2024-03-20T10:00:00'),
-    changeDescription: '承認工程から確認工程に変更されました。',
-    actionRequired: '内容を確認し、必要に応じてコメントを追加してください。',
-    assignee: '山田太郎',
-    dueDate: new Date('2024-03-25T17:00:00'),
-    statusChangedAt: new Date('2024-03-20T10:00:00'),
-  },
-  {
-    id: 2,
-    circularId: 'circ-002',
-    circularTitle: '新規プロジェクト提案書',
-    status: 'in_progress',
-    statusText: '対応中',
-    timestamp: new Date('2024-03-19T15:30:00'),
-    changeDescription: '確認工程から承認工程に変更されました。',
-    actionRequired: '最終確認の上、承認してください。',
-    assignee: '鈴木一郎',
-    dueDate: new Date('2024-03-22T17:00:00'),
-    statusChangedAt: new Date('2024-03-19T15:30:00'),
-  },
-]);
+// IndexedDBの設定
+const DB_NAME = 'todo_cache_db';
+const DB_VERSION = 1;
+const NOTIFICATION_STORE = 'notifications';
+const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24時間
+
+// IndexedDBの初期化
+const initDB = () => {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onerror = () => {
+      console.error('IndexedDBの初期化に失敗しました');
+      reject(request.error);
+    };
+
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+
+    request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(NOTIFICATION_STORE)) {
+        db.createObjectStore(NOTIFICATION_STORE, { keyPath: 'id' });
+      }
+    };
+  });
+};
+
+// キャッシュからデータを取得
+const getFromCache = async () => {
+  try {
+    const db = await initDB();
+    return new Promise<any[]>((resolve, reject) => {
+      const transaction = db.transaction(NOTIFICATION_STORE, 'readonly');
+      const store = transaction.objectStore(NOTIFICATION_STORE);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const data = request.result;
+        if (data && data.length > 0) {
+          // 有効期限切れのデータをフィルタリング
+          const validData = data.filter(
+            (item) => Date.now() - item.timestamp < CACHE_EXPIRY
+          );
+          resolve(validData.map((item) => item.data));
+        } else {
+          resolve([]);
+        }
+      };
+
+      request.onerror = () => {
+        reject(request.error);
+      };
+
+      transaction.oncomplete = () => {
+        db.close();
+      };
+    });
+  } catch (error) {
+    console.error('キャッシュの取得に失敗しました:', error);
+    return [];
+  }
+};
+
+// データをキャッシュに保存
+const saveToCache = async (notifications: Notification[]) => {
+  try {
+    const db = await initDB();
+    return new Promise<boolean>((resolve, reject) => {
+      const transaction = db.transaction(NOTIFICATION_STORE, 'readwrite');
+      const store = transaction.objectStore(NOTIFICATION_STORE);
+
+      // 既存のデータをクリア
+      store.clear();
+
+      // 新しいデータを保存（シンプルな形式に変換）
+      notifications.forEach((notification) => {
+        const cacheData = {
+          id: notification.id,
+          circularId: notification.circularId,
+          circularTitle: notification.circularTitle,
+          status: notification.status,
+          statusText: notification.statusText,
+          changeDescription: notification.changeDescription,
+          actionRequired: notification.actionRequired,
+          assignee: notification.assignee,
+          dueDate: notification.dueDate,
+          statusChangedAt: notification.statusChangedAt,
+          createdAt: notification.createdAt,
+          updatedAt: notification.updatedAt,
+          updatedBy: notification.updatedBy,
+        };
+        store.put({
+          id: notification.id,
+          data: cacheData,
+          timestamp: Date.now(),
+        });
+      });
+
+      transaction.oncomplete = () => {
+        db.close();
+        resolve(true);
+      };
+
+      transaction.onerror = () => {
+        reject(transaction.error);
+      };
+    });
+  } catch (error) {
+    console.error('キャッシュの保存に失敗しました:', error);
+    return false;
+  }
+};
+
+const statusChangedAtFrom = ref('');
+const statusChangedAtTo = ref('');
+
+// データ取得ボタン用
+const onFetchNotifications = async () => {
+  // ステータスがcompletedの場合は日付必須
+  if (statusFilter.value === 'completed') {
+    if (!statusChangedAtFrom.value || !statusChangedAtTo.value) {
+      alert(
+        '「確認済み」を選択した場合はステータス変更日の両方を入力してください。'
+      );
+      return;
+    }
+  }
+  await fetchNotifications(true);
+};
+
+// 通知データの取得
+const fetchNotifications = async (forceRefresh = false) => {
+  try {
+    // キャッシュからデータを取得（強制更新でない場合のみ）
+    if (!forceRefresh) {
+      const cachedNotifications = await getFromCache();
+      if (cachedNotifications.length > 0) {
+        notifications.value = cachedNotifications;
+        return;
+      }
+    }
+
+    // 1段目のフィルタ条件をAPIリクエストに反映
+    let filter: any = {};
+    if (statusFilter.value === 'all') {
+      filter.status = { ne: 'completed' };
+    } else {
+      filter.status = { eq: statusFilter.value };
+    }
+    // ステータス変更日範囲
+    if (statusChangedAtFrom.value) {
+      filter.statusChangedAt = filter.statusChangedAt || {};
+      filter.statusChangedAt.ge = statusChangedAtFrom.value;
+    }
+    if (statusChangedAtTo.value) {
+      filter.statusChangedAt = filter.statusChangedAt || {};
+      filter.statusChangedAt.le = statusChangedAtTo.value;
+    }
+
+    const { data, errors } = await client.models.Notification.list({
+      filter,
+    });
+
+    if (errors) {
+      console.error('通知データの取得に失敗しました:', errors);
+      return;
+    }
+
+    // Circularデータを取得してタイトルと更新者を設定
+    const notificationsWithTitles = await Promise.all(
+      data.map(async (notification) => {
+        const { data: circularData } = await client.models.Circular.get(
+          { id: notification.circularId || '' },
+          { selectionSet: ['title', 'updatedBy'] }
+        );
+
+        // シンプルな形式でデータを返す
+        return {
+          id: notification.id || '',
+          circularId: notification.circularId || '',
+          circularTitle: circularData?.title || 'タイトルなし',
+          status:
+            (notification.status as 'pending' | 'in_progress' | 'completed') ||
+            'pending',
+          statusText: notification.statusText || '',
+          changeDescription: notification.changeDescription || '',
+          actionRequired: notification.actionRequired || '',
+          assignee: notification.assignee || '',
+          dueDate: notification.dueDate || '',
+          statusChangedAt: notification.statusChangedAt || '',
+          createdAt: notification.createdAt || '',
+          updatedAt: notification.updatedAt || '',
+          updatedBy: circularData?.updatedBy || '',
+        };
+      })
+    );
+
+    // 表示用のデータを設定
+    notifications.value = notificationsWithTitles;
+    // キャッシュに保存
+    await saveToCache(notificationsWithTitles);
+  } catch (error) {
+    console.error('通知データの取得に失敗しました:', error);
+  }
+};
 
 interface ColumnFilters {
+  id: string;
   status: string;
   title: string;
+  changeDescription: string;
   fromProcess: string;
   toProcess: string;
-  assignee: string;
-  dueDate: string;
-  statusChangedAt: string;
+  updatedBy: string;
+  dueDateFrom: string;
+  dueDateTo: string;
+  updateDateFrom: string;
+  updateDateTo: string;
+  statusChangedAtFrom: string;
+  statusChangedAtTo: string;
 }
 
 const columnFilters = ref<ColumnFilters>({
+  id: '',
   status: '',
   title: '',
+  changeDescription: '',
   fromProcess: '',
   toProcess: '',
-  assignee: '',
-  dueDate: '',
-  statusChangedAt: '',
+  updatedBy: '',
+  dueDateFrom: '',
+  dueDateTo: '',
+  updateDateFrom: '',
+  updateDateTo: '',
+  statusChangedAtFrom: '',
+  statusChangedAtTo: '',
 });
 
 const filteredNotifications = computed(() => {
   return notifications.value.filter((notification) => {
+    // 識別番号フィルタ
+    const matchesId =
+      !columnFilters.value.id ||
+      notification.id
+        .toLowerCase()
+        .includes(columnFilters.value.id.toLowerCase());
+    // 変更内容フィルタ
+    const matchesChangeDescription =
+      !columnFilters.value.changeDescription ||
+      notification.changeDescription
+        .toLowerCase()
+        .includes(columnFilters.value.changeDescription.toLowerCase());
+    // 更新日範囲フィルタ
+    let matchesUpdateDate = true;
+    if (columnFilters.value.updateDateFrom) {
+      matchesUpdateDate =
+        matchesUpdateDate &&
+        notification.updatedAt >= columnFilters.value.updateDateFrom;
+    }
+    if (columnFilters.value.updateDateTo) {
+      matchesUpdateDate =
+        matchesUpdateDate &&
+        notification.updatedAt <= columnFilters.value.updateDateTo;
+    }
+    // ...既存のフィルタ条件...
     const matchesSearch = notification.circularTitle
       .toLowerCase()
       .includes(searchQuery.value.toLowerCase());
-    const matchesStatus =
-      statusFilter.value === 'all' ||
-      notification.status === statusFilter.value;
-
     const matchesColumnStatus =
       !columnFilters.value.status ||
       notification.status === columnFilters.value.status;
-
     const matchesColumnTitle =
       !columnFilters.value.title ||
       notification.circularTitle
         .toLowerCase()
         .includes(columnFilters.value.title.toLowerCase());
-
     // 前工程フィルタ
     const fromProcess = getFromProcess(notification.changeDescription).replace(
       '工程',
@@ -347,31 +738,46 @@ const filteredNotifications = computed(() => {
     const matchesToProcess =
       !columnFilters.value.toProcess ||
       toProcess === columnFilters.value.toProcess;
-
-    const matchesColumnAssignee =
-      !columnFilters.value.assignee ||
-      notification.assignee
-        .toLowerCase()
-        .includes(columnFilters.value.assignee.toLowerCase());
-
-    const matchesColumnDueDate =
-      !columnFilters.value.dueDate ||
-      formatDateOnly(notification.dueDate) ===
-        formatDateOnly(new Date(columnFilters.value.dueDate));
-
-    const matchesColumnStatusChangedAt =
-      !columnFilters.value.statusChangedAt ||
-      formatDateOnly(notification.statusChangedAt) ===
-        formatDateOnly(new Date(columnFilters.value.statusChangedAt));
-
+    const matchesColumnUpdatedBy =
+      !columnFilters.value.updatedBy ||
+      (notification.updatedBy &&
+        notification.updatedBy
+          .toLowerCase()
+          .includes(columnFilters.value.updatedBy.toLowerCase()));
+    // 期限範囲フィルタ
+    let matchesColumnDueDate = true;
+    if (columnFilters.value.dueDateFrom) {
+      matchesColumnDueDate =
+        matchesColumnDueDate &&
+        notification.dueDate >= columnFilters.value.dueDateFrom;
+    }
+    if (columnFilters.value.dueDateTo) {
+      matchesColumnDueDate =
+        matchesColumnDueDate &&
+        notification.dueDate <= columnFilters.value.dueDateTo;
+    }
+    // ステータス変更日範囲フィルタ
+    let matchesColumnStatusChangedAt = true;
+    if (columnFilters.value.statusChangedAtFrom) {
+      matchesColumnStatusChangedAt =
+        matchesColumnStatusChangedAt &&
+        notification.statusChangedAt >= columnFilters.value.statusChangedAtFrom;
+    }
+    if (columnFilters.value.statusChangedAtTo) {
+      matchesColumnStatusChangedAt =
+        matchesColumnStatusChangedAt &&
+        notification.statusChangedAt <= columnFilters.value.statusChangedAtTo;
+    }
     return (
+      matchesId &&
+      matchesChangeDescription &&
+      matchesUpdateDate &&
       matchesSearch &&
-      matchesStatus &&
       matchesColumnStatus &&
       matchesColumnTitle &&
       matchesFromProcess &&
       matchesToProcess &&
-      matchesColumnAssignee &&
+      matchesColumnUpdatedBy &&
       matchesColumnDueDate &&
       matchesColumnStatusChangedAt
     );
@@ -400,10 +806,13 @@ const sortedNotifications = computed(() => {
   return arr.sort((a, b) => {
     let aVal = a[sortKey.value as keyof Notification];
     let bVal = b[sortKey.value as keyof Notification];
-    // 日付型はDateとして比較
+    // 日付型はstringからDateに変換して比較
     if (sortKey.value === 'dueDate' || sortKey.value === 'statusChangedAt') {
-      aVal = (aVal as Date)?.getTime?.() ?? 0;
-      bVal = (bVal as Date)?.getTime?.() ?? 0;
+      const aTime = aVal ? new Date(aVal as string).getTime() : 0;
+      const bTime = bVal ? new Date(bVal as string).getTime() : 0;
+      if (aTime < bTime) return sortOrder.value === 'asc' ? -1 : 1;
+      if (aTime > bTime) return sortOrder.value === 'asc' ? 1 : -1;
+      return 0;
     } else if (typeof aVal === 'string' && typeof bVal === 'string') {
       aVal = aVal.toLowerCase();
       bVal = bVal.toLowerCase();
@@ -439,27 +848,6 @@ watch(
   { deep: true }
 );
 
-const updateStatus = (
-  id: number,
-  newStatus: 'pending' | 'in_progress' | 'completed'
-) => {
-  const notification = notifications.value.find((n) => n.id === id);
-  if (notification) {
-    notification.status = newStatus;
-    notification.statusChangedAt = new Date();
-    switch (newStatus) {
-      case 'in_progress':
-        notification.statusText = '対応中';
-        break;
-      case 'completed':
-        notification.statusText = '確認済み';
-        break;
-      default:
-        notification.statusText = '未対応';
-    }
-  }
-};
-
 const viewCircular = (circularId: string) => {
   router.push({
     name: 'circular-detail',
@@ -467,24 +855,50 @@ const viewCircular = (circularId: string) => {
   });
 };
 
-const formatDateOnly = (date: Date) => {
-  return new Intl.DateTimeFormat('ja-JP', {
+// 日付のフォーマット
+const formatDate = (date: string | Date | null) => {
+  if (!date) return '';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return d.toLocaleDateString('ja-JP', {
     year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  }).format(date);
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+// 日付のみのフォーマット関数を追加
+const formatDateOnly = (dateString: string) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('ja-JP', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
 };
 
 // 変更前の工程を抽出する関数
 const getFromProcess = (description: string): string => {
-  const match = description.match(/(.*?)工程から/);
-  return match ? match[1] + '工程' : '';
+  // 「工程を◯◯工程」パターン
+  const match1 = description.match(/工程を([^工程]+工程)/);
+  if (match1) return match1[1];
+  // 「◯◯工程から」パターン
+  const match2 = description.match(/([^工程]+工程)から/);
+  if (match2) return match2[1];
+  return '';
 };
 
 // 変更後の工程を抽出する関数
 const getToProcess = (description: string): string => {
-  const match = description.match(/から(.*?)工程/);
-  return match ? match[1] + '工程' : '';
+  // 「から◯◯工程」パターン
+  const match1 = description.match(/から(.*?)工程/);
+  if (match1) return match1[1] + '工程';
+  // 「工程を◯◯」パターン（後工程が明示されていない場合）
+  const match2 = description.match(/工程を(.*?)(工程)?$/);
+  if (match2) return match2[1] + '工程';
+  return '';
 };
 
 const onItemsPerPageChange = () => {
@@ -495,13 +909,19 @@ const resetFilters = () => {
   searchQuery.value = '';
   statusFilter.value = 'all';
   columnFilters.value = {
+    id: '',
     status: '',
     title: '',
+    changeDescription: '',
     fromProcess: '',
     toProcess: '',
-    assignee: '',
-    dueDate: '',
-    statusChangedAt: '',
+    updatedBy: '',
+    dueDateFrom: '',
+    dueDateTo: '',
+    updateDateFrom: '',
+    updateDateTo: '',
+    statusChangedAtFrom: '',
+    statusChangedAtTo: '',
   };
 };
 
@@ -533,6 +953,159 @@ function getTodoMessagesForNotification(notification: Notification): string[] {
   });
   return result;
 }
+
+// ToastMessage用
+const toastRef = ref();
+function copyId(id: string) {
+  navigator.clipboard.writeText(id).then(() => {
+    toastRef.value?.show('識別番号をコピーしました: ' + id);
+  });
+}
+
+// 詳細モーダル用の状態
+const showDetailModal = ref(false);
+const selectedNotification = ref<Notification | null>(null);
+
+// 詳細モーダルを閉じる
+const closeDetailModal = () => {
+  showDetailModal.value = false;
+  selectedNotification.value = null;
+};
+
+// ステータス更新をトグル処理
+const toggleStatus = async (notification: Notification) => {
+  try {
+    const newStatus =
+      notification.status === 'pending'
+        ? 'in_progress'
+        : notification.status === 'in_progress'
+        ? 'completed'
+        : 'pending';
+    const newStatusText = getStatusText(newStatus);
+    const now = new Date().toISOString();
+
+    const { errors } = await client.models.Notification.update({
+      id: notification.id,
+      status: newStatus,
+      statusText: newStatusText,
+      statusChangedAt: now,
+    });
+
+    if (errors) {
+      console.error('ステータスの更新に失敗しました:', errors);
+      return;
+    }
+
+    // ローカルの状態を更新
+    const index = notifications.value.findIndex(
+      (n) => n.id === notification.id
+    );
+    if (index !== -1) {
+      notifications.value[index] = {
+        ...notifications.value[index],
+        status: newStatus,
+        statusText: newStatusText,
+        statusChangedAt: now,
+      };
+      // キャッシュを更新
+      await saveToCache(notifications.value);
+    }
+  } catch (error) {
+    console.error('ステータスの更新に失敗しました:', error);
+  }
+};
+
+// ステータスに応じたテキストを取得
+const getStatusText = (status: string): string => {
+  switch (status) {
+    case 'pending':
+      return '未対応';
+    case 'in_progress':
+      return '対応中';
+    case 'completed':
+      return '確認済み';
+    default:
+      return '未対応';
+  }
+};
+
+// ローカルストレージ用キー
+const TODO_FILTER_KEY = 'todo_filters';
+const TODO_PAGINATION_KEY = 'todo_pagination';
+
+// フィルタ・ページングの保存
+function saveFiltersToStorage() {
+  localStorage.setItem(
+    TODO_FILTER_KEY,
+    JSON.stringify({
+      statusFilter: statusFilter.value,
+      statusChangedAtFrom: statusChangedAtFrom.value,
+      statusChangedAtTo: statusChangedAtTo.value,
+      columnFilters: columnFilters.value,
+      searchQuery: searchQuery.value,
+    })
+  );
+}
+function savePaginationToStorage() {
+  localStorage.setItem(
+    TODO_PAGINATION_KEY,
+    JSON.stringify({
+      currentPage: currentPage.value,
+      itemsPerPage: itemsPerPage.value,
+    })
+  );
+}
+// フィルタ・ページングの復元
+function loadFiltersFromStorage() {
+  const saved = localStorage.getItem(TODO_FILTER_KEY);
+  if (saved) {
+    try {
+      const obj = JSON.parse(saved);
+      if (obj.statusFilter !== undefined) statusFilter.value = obj.statusFilter;
+      if (obj.statusChangedAtFrom !== undefined)
+        statusChangedAtFrom.value = obj.statusChangedAtFrom;
+      if (obj.statusChangedAtTo !== undefined)
+        statusChangedAtTo.value = obj.statusChangedAtTo;
+      if (obj.columnFilters !== undefined)
+        columnFilters.value = { ...columnFilters.value, ...obj.columnFilters };
+      if (obj.searchQuery !== undefined) searchQuery.value = obj.searchQuery;
+    } catch {}
+  }
+}
+function loadPaginationFromStorage() {
+  const saved = localStorage.getItem(TODO_PAGINATION_KEY);
+  if (saved) {
+    try {
+      const obj = JSON.parse(saved);
+      if (obj.currentPage !== undefined) currentPage.value = obj.currentPage;
+      if (obj.itemsPerPage !== undefined) itemsPerPage.value = obj.itemsPerPage;
+    } catch {}
+  }
+}
+
+// 変更時に自動保存
+watch(
+  [
+    statusFilter,
+    statusChangedAtFrom,
+    statusChangedAtTo,
+    columnFilters,
+    searchQuery,
+  ],
+  saveFiltersToStorage,
+  { deep: true }
+);
+watch([currentPage, itemsPerPage], savePaginationToStorage);
+
+// 初回マウント時に復元
+onMounted(() => {
+  loadFiltersFromStorage();
+  loadPaginationFromStorage();
+  statusFilter.value = statusFilter.value || 'all';
+  statusChangedAtFrom.value = statusChangedAtFrom.value || '';
+  statusChangedAtTo.value = statusChangedAtTo.value || '';
+  fetchNotifications();
+});
 </script>
 
 <style scoped>
@@ -553,14 +1126,30 @@ function getTodoMessagesForNotification(notification: Notification): string[] {
 
 h2 {
   margin-bottom: 1.2rem;
+  color: #424242;
 }
 
 .filters {
   margin-bottom: 1.2rem;
-  padding: 0.7rem;
-  background-color: #f9fafb;
+  padding: 0;
+  background-color: transparent;
   border-radius: 0.5rem;
   position: relative;
+}
+
+/* 1段目: データ取得条件 */
+.fetch-filter-block {
+  background: #e0e0e0;
+  border-radius: 0.5rem;
+  padding: 1rem 0.7rem;
+}
+
+/* 2段目: ローカルフィルタ */
+.local-filter-block {
+  background: #f5f5f5;
+  border-radius: 0.5rem;
+  padding: 1rem 0.7rem;
+  margin-bottom: 1.2rem;
 }
 
 .filter-row {
@@ -592,13 +1181,13 @@ h2 {
 
 .filter-group label {
   font-size: 16pt;
-  color: #374151;
+  color: #424242;
   font-weight: 500;
 }
 
 .form-control {
   padding: 8px;
-  border: 1px solid #ddd;
+  border: 1px solid #9e9e9e;
   border-radius: 4px;
   font-size: 16pt;
   height: 40px;
@@ -613,21 +1202,20 @@ h2 {
 .btn-reset {
   display: inline-block;
   padding: 8px;
-  background-color: #f3f4f6;
-  color: #374151;
-  border: 1px solid #d1d5db;
+  background-color: #f5f5f5;
+  color: #424242;
+  border: 1px solid #9e9e9e;
   border-radius: 0.375rem;
   cursor: pointer;
   font-size: 15pt;
   min-width: 80px;
   max-width: 120px;
-  height: 40px;
   transition: all 0.2s;
   box-sizing: border-box;
 }
 
 .btn-reset:hover {
-  background-color: #e5e7eb;
+  background-color: #e0e0e0;
 }
 
 .table-container {
@@ -652,13 +1240,13 @@ h2 {
 }
 
 .notification-table th {
-  background-color: #f8f9fa;
+  background-color: #f5f5f5;
   font-weight: bold;
-  color: #333;
+  color: #424242;
 }
 
 .notification-table tr:hover {
-  background-color: #f8f9fa;
+  background-color: #f5f5f5;
 }
 
 .status-badge {
@@ -670,17 +1258,17 @@ h2 {
 }
 
 .status-badge.pending {
-  background-color: #ffd700;
-  color: #000;
+  background-color: #e67a00;
+  color: white;
 }
 
 .status-badge.in_progress {
-  background-color: #1e90ff;
+  background-color: #1976d2;
   color: white;
 }
 
 .status-badge.completed {
-  background-color: #32cd32;
+  background-color: #008080;
   color: white;
 }
 
@@ -718,12 +1306,21 @@ h2 {
 }
 
 .action-btn.view {
-  background-color: #2196f3;
+  background-color: #1976d2;
   color: white;
 }
 
 .action-btn.view:hover {
-  background-color: #1976d2;
+  background-color: #1565c0;
+}
+
+.action-btn.detail {
+  background-color: #b8677a;
+  color: white;
+}
+
+.action-btn.detail:hover {
+  background-color: #a05a6b;
 }
 
 .pagination-controls {
@@ -760,18 +1357,24 @@ h2 {
   border: 1px solid #ddd;
   border-radius: 4px;
   background-color: white;
+  color: #1976d2;
+  font-size: 16pt;
+  min-width: 80px;
   cursor: pointer;
   transition: all 0.2s;
+  opacity: 1;
 }
 
 .pagination-btn:hover:not(:disabled) {
   background-color: #f8f9fa;
   border-color: #999;
+  color: #1565c0;
 }
 
 .pagination-btn:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+  color: #bbb;
 }
 
 .page-info {
@@ -792,7 +1395,7 @@ h2 {
 
 .process-arrow {
   margin: 0 8px;
-  color: #666;
+  color: #9e9e9e;
   font-weight: bold;
 }
 
@@ -815,5 +1418,155 @@ h2 {
 .todo-message-list-inline li {
   list-style-type: disc;
   margin-bottom: 0.1em;
+}
+
+.todo-detail-modal {
+  max-width: 800px;
+  width: 90%;
+}
+
+.detail-content {
+  margin: 1.5rem 0;
+  background: #f5f5f5;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.detail-item {
+  display: flex;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+  align-items: flex-start;
+}
+
+.detail-item:last-child {
+  margin-bottom: 0;
+}
+
+.detail-item .label {
+  font-weight: 600;
+  color: #424242;
+  width: 160px;
+  flex-shrink: 0;
+}
+
+.detail-item .value {
+  color: #424242;
+  flex-grow: 1;
+}
+
+.todo-message-list {
+  margin: 0.5em 0 0 0;
+  padding-left: 1.5em;
+  color: #1976d2;
+}
+
+.todo-message-list li {
+  margin-bottom: 0.5em;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.modal-actions .action-btn {
+  min-width: 160px;
+}
+
+.action-btn.close {
+  background-color: #9e9e9e;
+  color: white;
+}
+
+.action-btn.close:hover {
+  background-color: #757575;
+}
+
+.status-toggle {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s ease;
+  min-width: 100px;
+}
+
+.status-toggle.pending {
+  background-color: #e67a00;
+  color: white;
+}
+
+.status-toggle.in_progress {
+  background-color: #1976d2;
+  color: white;
+}
+
+.status-toggle.completed {
+  background-color: #008080;
+  color: white;
+}
+
+.status-toggle:hover {
+  filter: brightness(90%);
+}
+
+.action-btn.detail {
+  background-color: #b8677a;
+  color: white;
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  font-weight: bold;
+  transition: background-color 0.2s;
+  min-width: 80px;
+  text-align: center;
+}
+
+.action-btn.detail:hover {
+  background-color: #a05a6b;
+}
+
+.refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: #1976d2;
+  color: white;
+  border: none;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  font-size: 16pt;
+  font-weight: bold;
+  transition: background-color 0.2s;
+}
+
+.refresh-btn:hover {
+  background-color: #1565c0;
+}
+
+.refresh-icon {
+  font-size: 1.2em;
+}
+
+.id-cell {
+  cursor: pointer;
+  color: #1976d2;
+  transition: background 0.2s;
+}
+.id-cell:hover {
+  background: #e3f2fd;
+}
+
+/* タイトルフィルタの幅を広げる */
+.filter-group-title {
+  min-width: 220px;
+  max-width: 340px;
+  flex: 2 1 220px;
 }
 </style>

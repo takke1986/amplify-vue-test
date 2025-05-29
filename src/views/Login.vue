@@ -28,7 +28,8 @@ export default defineComponent({
 <template>
   <div class="login-container">
     <div class="login-box">
-      <h1>回覧箋アプリ</h1>
+      <GlobalMessage />
+      <h1>電設工程管理システム</h1>
       <p>Microsoft Entra IDでログインしてください</p>
       <button class="login-button" @click="handleLogin">
         <svg
@@ -56,6 +57,12 @@ export default defineComponent({
   justify-content: center;
   align-items: center;
   min-height: 100vh;
+  background: #fff;
+  width: 100vw;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 10000;
 }
 
 .login-box {
@@ -74,7 +81,6 @@ h1 {
 }
 
 p {
-  color: #666;
   margin-bottom: 2rem;
 }
 

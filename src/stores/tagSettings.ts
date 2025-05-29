@@ -16,6 +16,8 @@ export interface TagSetting {
   processSettings: ProcessSetting[];
   createdBy?: string;
   createdAt?: string;
+  updatedBy?: string;
+  updatedAt?: string;
 }
 
 const PROCESS_COUNT = 15;
@@ -34,7 +36,18 @@ export const useTagSettingsStore = defineStore('tagSettings', () => {
     isLoading.value = true;
     error.value = null;
     try {
-      const { data, errors } = await client.models.Tag.list();
+      const { data, errors } = await client.models.Tag.list({
+        selectionSet: [
+          'id',
+          'name',
+          'color',
+          'createdBy',
+          'createdAt',
+          'updatedBy',
+          'updatedAt',
+          'processSettings',
+        ],
+      });
       if (errors) {
         throw new Error(errors[0].message);
       }
@@ -45,6 +58,8 @@ export const useTagSettingsStore = defineStore('tagSettings', () => {
         processSettings: JSON.parse(tag.processSettings || '[]'),
         createdBy: tag.createdBy || '',
         createdAt: tag.createdAt || '',
+        updatedBy: tag.updatedBy || '',
+        updatedAt: tag.updatedAt || '',
       }));
     } catch (e) {
       console.error('タグの取得に失敗しました:', e);

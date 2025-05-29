@@ -9,6 +9,7 @@ import CircularCreateView from '@/views/CircularCreateView.vue';
 import SettingsView from '@/views/SettingsView.vue';
 import TodoView from '@/views/TodoView.vue';
 import TagSettingsView from '@/views/TagSettingsView.vue';
+import TodoDetailView from '@/views/TodoDetailView.vue';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -52,6 +53,16 @@ const router = createRouter({
           path: 'tag-settings',
           name: 'tag-settings',
           component: TagSettingsView,
+        },
+        {
+          path: '/todos',
+          name: 'todos',
+          component: TodoView,
+        },
+        {
+          path: '/todos/:id',
+          name: 'todo-detail',
+          component: TodoDetailView,
         },
       ],
     },
