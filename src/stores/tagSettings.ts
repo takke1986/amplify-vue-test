@@ -20,8 +20,6 @@ export interface TagSetting {
   updatedAt?: string;
 }
 
-const PROCESS_COUNT = 15;
-
 // 初期タグ例（初期値は空配列に変更）
 // const initialTagSettings: TagSetting[] = [ ... ];
 
